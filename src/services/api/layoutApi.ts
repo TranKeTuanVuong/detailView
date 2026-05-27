@@ -1,5 +1,5 @@
 const API_URL = import.meta.env.DEV
-  ? ''
+  ? 'https://demo.saigongreentech.com/baotramdev'
   : 'https://demo.saigongreentech.com/baotramdev';
 
 /**
