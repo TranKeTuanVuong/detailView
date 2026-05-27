@@ -84,7 +84,14 @@ const RenderField = ({ field, value, onChange }) => {
 
 /* ================= MAIN CONFIG VIEW ================= */
 export default function EditView() {
-  const { urls, layout, loading } = DetailApi();
+  const {
+  urls,
+  layout,
+  loading,
+  module,
+  setModule,
+  handleLayOut
+} = DetailApi();
   const [formData, setFormData] = useState({});
   const [lineItems, setLineItems] = useState([]);
 
@@ -118,7 +125,7 @@ export default function EditView() {
     alert("Đã gom dữ liệu thành công! Xem chi tiết tại tab Console.");
   };
 
-  if (!loading || !layout) {
+  if (loading || !layout) {
     return (
       <div style={{ height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
         <Spin size="large" description="Đang tải cấu hình dữ liệu..." />
@@ -196,8 +203,33 @@ export default function EditView() {
       {/* HEADER TÁC VỤ */}
       <div className="header">
         <div>
-          <Title level={3} style={{ margin: 0 }}>{layout.module_label || 'Chi tiết bản ghi'}</Title>
-          <Text type="secondary">Module: {layout.module}</Text>
+          <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+  <div style={{ flex: 1 }}>
+    <Title level={3} style={{ margin: 0 }}>
+      {layout.module_label || 'Chi tiết bản ghi'}
+    </Title>
+
+    <div style={{ marginTop: 8 }}>
+      <Text type="secondary">Module:</Text>
+
+      <Input
+        placeholder="Nhập module name"
+        value={module}
+        onChange={(e) => setModule(e.target.value)}
+        style={{ width: 250, marginLeft: 8 }}
+      />
+    </div>
+  </div>
+
+  <Button
+    type="primary"
+    size="large"
+    className="btn-primary-custom"
+   onClick={() => handleLayOut(module)}
+  >
+    Load lại
+  </Button>
+</div>
         </div>
         <div className="header-buttons">
           <Button size="large">Hủy</Button>

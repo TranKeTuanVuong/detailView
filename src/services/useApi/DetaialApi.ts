@@ -16,24 +16,10 @@ export const DetailApi = () => {
   const [urlParams, setUrlParams] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [action, setAction] = useState<string>('');
+  const [module,setModule] = useState('AOS_Products')
   const [recordId, setRecordId] = useState<string | null>(null);
-  const [searchValue, setSearchValue] = React.useState<string>('');
-  const [searchCustomerValue, setSearchCustomerValue] = React.useState<string>('');
-  const [selectedEmployee, setSelectedEmployee] = React.useState<string | null>(null);
-  const [selectedWarehouse, setSelectedWarehouse] = React.useState<string | null>(null);
-  const [orderType, setOrderType] = React.useState('banhang');
-  const [orderDate, setOrderDate] = React.useState<dayjs.Dayjs | null>(null);
-  const [discount, setDiscount] = React.useState<number>(0);
-  const [discountType, setDiscountType] = React.useState<string>('direct');
-  const [discountModalOpen, setDiscountModalOpen] =useState(false);
-
-  const [openShipmentModal, setOpenShipmentModal] = useState(false);
- 
-  const [shipmentKeyword, setShipmentKeyword] = useState('');
-  const [orderStatus, setOrderStatus] = useState<string>('');
-  const [srcSell,setSrcSell] = useState<string>('');
-
-  const module='AOS_Products';
+  
+  //const module='AOS_Products';
   const checkAction = '';
   const type = 'edit'
 
@@ -90,34 +76,36 @@ export const DetailApi = () => {
 
     
 
-    const handleLayOut = async() => {
+   const handleLayOut = async (customModule?: string) => {
+        const mod = customModule || module;
+        console.log(mod)
+
+        if (!mod) return;
 
         setLoading(true);
-        try{
-        const res = await fetchEditViewLayout(module,type);
 
+        try {
+            const res = await fetchEditViewLayout(mod, type);
 
-         if (!res){
-            console.warn("không lấy dữ liệu được");
-            
-         }
+            if (!res) {
+            console.warn("Không lấy dữ liệu được");
+            return;
+            }
+            console.log(res)
 
-         console.log(res);
-         setLayout(res);
-
-
-        } catch(e){
+            setLayout(res);
+        } catch (e) {
             console.warn(e);
+        } finally {
             setLoading(false);
-
         }
-
-    }
+    };
     
-    useEffect(()=>{
-        handleLayOut();
-    },[])
+    
 
+    useEffect(() => {
+        handleLayOut();
+        }, []);
 
 
 
@@ -134,6 +122,10 @@ export const DetailApi = () => {
         urls,
         layout,
         loading,
+        module,
+        setModule,
+        handleLayOut
+
       
        
 

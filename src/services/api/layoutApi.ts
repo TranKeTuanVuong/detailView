@@ -10,6 +10,7 @@ export const fetchEditViewLayout = async (
   type: string
 ) => {
   try {
+    
     const response = await fetch(
       `${API_URL}/index.php?entryPoint=meta_layout&module=${module}&type=${type}`
     );
