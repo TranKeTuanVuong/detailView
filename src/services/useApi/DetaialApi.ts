@@ -43,7 +43,7 @@ export const DetailApi = () => {
 
    // 1. Logic tạo URL cho các nút bấm (Chuyển từ PHP sang JavaScript)
   const generateUrls = (module: string, action: string, checkAction: string | null, recordId: string | null) => {
-    const baseUrl = 'http://localhost/baotram/';
+    const baseUrl = 'https://erp.baotram.vn/';
     
     // Các URL cơ bản
     const url_import = `${baseUrl}index.php?module=Import&action=Step1&import_module=${module}&return_module=${module}&return_action=index`;
