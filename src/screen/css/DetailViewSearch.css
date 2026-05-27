@@ -1,0 +1,89 @@
+/* Product Search Item */
+.product-search-item {
+  display: flex;
+  gap: 12px;
+  padding: 10px 0;
+  align-items: flex-start;
+  width: 100%;
+}
+
+.product-search-left {
+  flex-shrink: 0;
+}
+
+.product-search-image,
+.product-search-image-placeholder {
+  width: 48px;
+  height: 48px;
+  border-radius: 6px;
+  object-fit: cover;
+  background: #f0f0f0;
+}
+
+.product-search-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.product-search-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #0050b3;
+  margin-bottom: 4px;
+  white-space: normal;
+}
+
+.product-search-sku {
+  font-size: 11px;
+  color: #8c8c8c;
+}
+
+.product-search-right {
+  flex-shrink: 0;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.product-search-price {
+  font-size: 14px;
+  font-weight: 700;
+  color: #262626;
+  margin-bottom: 4px;
+}
+
+.product-search-stock {
+  font-size: 11px;
+  color: #8c8c8c;
+}
+
+/* AutoComplete styling */
+.ant-select-dropdown .ant-select-item-group-label {
+  color: #1890ff;
+  font-weight: 600;
+  padding: 8px 12px;
+}
+
+.ant-select-dropdown .ant-select-item {
+  padding: 8px 12px;
+}
+
+/* Customer Search Item */
+.customer-search-item {
+  display: flex;
+  gap: 12px;
+  padding: 8px 0;
+  align-items: flex-start;
+  width: 100%;
+}
+
+.customer-search-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #0050b3;
+  margin-bottom: 4px;
+}
+
+.customer-search-phone {
+  font-size: 12px;
+  color: #8c8c8c;
+}

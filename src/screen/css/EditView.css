@@ -1,0 +1,147 @@
+.page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding: 24px;
+  background: #f0f2f5;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.header-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+/* Nút bấm thương hiệu #0088FF */
+.btn-primary-custom {
+  background-color: #0088FF !important;
+  border-color: #0088FF !important;
+}
+
+.btn-primary-custom:hover {
+  background-color: #2299FF !important;
+  border-color: #2299FF !important;
+}
+
+.workspace {
+  margin-bottom: 12px;
+  width: 100%;
+}
+
+.card {
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+
+/* Tiêu đề Panel in đậm căn trái */
+.panel-title-bold {
+  font-weight: 700 !important;
+  text-align: left !important;
+  display: block;
+}
+
+/* Tiêu đề cột bảng in đậm */
+.table-header-bold {
+  font-weight: 700 !important;
+}
+
+/* Chiều cao cân bằng cho Card chứa 4 trường dọc */
+.fixed-height-card {
+  height: 320px; 
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* cấu trúc Flexbox khóa khung cho Antd Tabs */
+.dynamic-tabs {
+  height: 100%;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.dynamic-tabs .ant-tabs-nav {
+  flex: none !important;
+  margin: 0 !important;
+  padding: 8px 12px !important;
+  background: #ffffff;
+  border-bottom: 1px solid #f0f0f0;
+  display: flex;
+  justify-content: flex-start !important;
+}
+
+/* Ép tên Tab luôn in đậm và màu đen tuyền */
+.dynamic-tabs .ant-tabs-tab .ant-tabs-tab-btn {
+  font-weight: 700 !important;
+  color: #000000 !important;
+}
+
+.dynamic-tabs .ant-tabs-tab.ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: #000000 !important;
+}
+
+.dynamic-tabs .ant-tabs-ink-bar {
+  background: #0088FF !important;
+}
+
+.dynamic-tabs .ant-tabs-content-holder {
+  flex: 1 !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+  min-height: 0 !important;
+}
+
+.dynamic-tabs .ant-tabs-content,
+.dynamic-tabs .ant-tabs-tabpane {
+  height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  flex: 1 !important;
+  min-height: 0 !important;
+}
+
+.tab-scroll-area {
+  height: 580px; /* Hoặc max-height: 600px; */
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px; /* Tạo khoảng trống nhẹ để thanh cuộn scrollbar không đè vào Input */
+}
+
+/* Tùy biến thanh cuộn cho thanh mảnh, đẹp mắt hơn trên Chrome/Safari */
+.tab-scroll-area::-webkit-scrollbar {
+  width: 6px;
+}
+.tab-scroll-area::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+.tab-scroll-area::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+/* =========================================================
+ * RESPONSIVE MEDIA QUERIES (MOBILE TIỆN ÍCH)
+ * ========================================================= */
+@media (max-width: 991px) {
+  .page {
+    padding: 12px;
+  }
+  .fixed-height-card {
+    height: auto !important;
+    max-height: 450px;
+  }
+  .tab-scroll-area {
+    max-height: 350px;
+  }
+  .workspace-col {
+    margin-bottom: 16px;
+  }
+}
