@@ -258,7 +258,7 @@ export default function LineItemsSection({
                   {
                     value: 'prod_02',
                     label: 'Sản phẩm mẫu B (SKU: SPMB)',
-                    product: { name: 'Sản phẩm mẫu B', sku: 'SPMB', price: 230000 }
+                    product: { name: 'Sản phẩm mẫu B', sku: 'SPMB', price: 230000,shipment_data:[{ id: 'sh_01', import_date: '2026-05-10', quantity_on_hand: 100, qty_cansell: 85 }]}
                   },
                 ]}
               />
