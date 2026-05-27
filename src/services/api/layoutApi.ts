@@ -1,6 +1,6 @@
 const API_URL = import.meta.env.DEV
   ? ''
-  : 'https://demo.saigongreentech.com';
+  : 'https://demo.saigongreentech.com/baotramdev';
 
 /**
  * Lấy cấu trúc layout EditView
