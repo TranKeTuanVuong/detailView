@@ -10,6 +10,7 @@ import FormPanels from '../components/FormPanels';
 import FormPanelsSearch from '../components/FormPanelsSearch';
 import FormTabs from '../components/FormTabs';
 import LineItemsSection from '../components/LineItemsSection';
+import PricePolicySection from '../components/PricePolicySection';
 
 // Import CSS
 import './css/EditView.css';
@@ -94,6 +95,10 @@ export default function EditView() {
 } = DetailApi();
   const [formData, setFormData] = useState({});
   const [lineItems, setLineItems] = useState([]);
+  // 🔥 1. KHỞI TẠO STATE CHỨA MẢNG CHÍNH SÁCH GIÁ ĐỘNG (Mặc định cho sẵn 1 dòng ban đầu giống ảnh)
+  const [pricePolicies, setPricePolicies] = useState([
+    { id: 'policy_init', group_customer_id: undefined, upc: '', price_without_vat: '' }
+  ]);
 
   const handleFormChange = (fieldName, newValue) => {
     setFormData(prev => ({ ...prev, [fieldName]: newValue }));
@@ -118,7 +123,8 @@ export default function EditView() {
     const finalPayload = {
       module: layout?.module,
       form_data: formattedFormData, 
-      line_items: lineItems         
+      line_items: lineItems,
+      price_policies:pricePolicies      
     };
 
     console.log("🚀 [FINAL PAYLOAD TO API]:", finalPayload);
@@ -289,17 +295,34 @@ export default function EditView() {
 </Row>
 
       {/* ================= LINE ITEMS SECTION ================= */}
-      <LineItemsSection 
-        lineItemsPanels={lineItemsPanels}
-        lineItems={lineItems}
-        setLineItems={setLineItems}
-        formData={formData}                  // <-- TRUYỀN THÊM TRƯỜNG NÀY
-        handleFormChange={handleFormChange}  // <-- TRUYỀN THÊM TRƯỜNG NÀY
-        handleSelectProduct={handleSelectProduct}
-        handleRemoveLine={handleRemoveLine}
-        handleTableFieldChange={handleTableFieldChange}
-        cleanSystemLabel={cleanSystemLabel}
+      {lineItemsPanels.map((panel) => {
+  // Điều kiện 1: Nếu là module chính sách giá thì render bảng chính sách giá
+  if (panel.line_item_source_module === 'Sgt_price_policy') {
+    return (
+      <PricePolicySection 
+        key={panel.key || panel.id}
+        pricePolicies={pricePolicies}
+        setPricePolicies={setPricePolicies}
       />
+    );
+  }
+
+  // Điều kiện 2: Các module còn lại (như đơn hàng, sản phẩm...) thì render bảng sản phẩm thường
+  return (
+    <LineItemsSection 
+      key={panel.module}
+      panel={panel} // 🔥 SỬA: Chỉ truyền panel hiện tại thay vì truyền cả mảng lineItemsPanels
+      lineItems={lineItems}
+      setLineItems={setLineItems}
+      formData={formData}                  
+      handleFormChange={handleFormChange}  
+      handleSelectProduct={handleSelectProduct}
+      handleRemoveLine={handleRemoveLine}
+      handleTableFieldChange={handleTableFieldChange}
+      cleanSystemLabel={cleanSystemLabel}
+    />
+  );
+})}
     </div>
   );
 }
