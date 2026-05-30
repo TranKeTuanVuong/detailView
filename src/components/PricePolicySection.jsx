@@ -2,16 +2,13 @@ import React from 'react';
 import { Card, Table, Button, Select, Input, Typography } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 
+import RelateModelSelect from './RelateModelSelect';
+
 const { Text } = Typography;
 
-export default function PricePolicySection({ pricePolicies, setPricePolicies }) {
+export default function PricePolicySection({nameModule,placeholder, pricePolicies, setPricePolicies }) {
   
-  // 1. Giả lập danh sách nhóm khách hàng (Sau này bạn có thể map từ field.options động của SuiteCRM)
-  const groupCustomerOptions = [
-    { value: 'group_retail', label: 'Khách mua lẻ' },
-    { value: 'group_wholesale', label: 'Đại lý / Khách mua sỉ' },
-    { value: 'group_vip', label: 'Khách hàng VIP' },
-  ];
+
 
   // 2. Hàm thêm một dòng chính sách giá mới tinh chỉnh chuẩn cấu trúc dữ liệu
   const handleAddRow = () => {
@@ -31,34 +28,43 @@ export default function PricePolicySection({ pricePolicies, setPricePolicies }) 
     setPricePolicies(prev => prev.filter(item => item.id !== id));
   };
 
-  // 4. Hàm cập nhật dữ liệu real-time khi người dùng nhập liệu trên từng dòng
-  const handleFieldChange = (id, fieldName, value) => {
-    setPricePolicies(prev => prev.map(item => {
-      if (item.id !== id) return item;
-      return { ...item, [fieldName]: value };
-    }));
-  };
+ const handleRowChange = (rowKey, field, value) => {
+  setPricePolicies(prev =>
+    prev.map(row =>
+      row.id === rowKey
+        ? { ...row, [field]: value }
+        : row
+    )
+  );
+};
+
 
   // 5. Cấu trúc các cột hiển thị khớp hoàn toàn với ảnh mẫu thiết kế của bạn
   const columns = [
     {
-      title: '#',
+      title: 'STT',
       key: 'stt',
       width: 60,
       align: 'center',
       render: (_, __, index) => <Text style={{ color: '#666' }}>{index + 1}</Text>
     },
     {
-      title: 'Nhóm khách hàng',
+      title: placeholder,
       dataIndex: 'group_customer_id',
       key: 'group_customer_id',
       render: (value, record) => (
-        <Select
-          style={{ width: '100%' }}
-          placeholder="Chọn nhóm khách hàng..."
-          value={value}
-          onChange={(val) => handleFieldChange(record.id, 'group_customer_id', val)}
-          options={groupCustomerOptions}
+        <RelateModelSelect
+         value={{
+            id: record.group_customer_id,
+            name: record.group_customer_name
+          }}
+         onChange={(newVal) => {
+            handleRowChange(record.id, 'group_customer_id', newVal?.id);
+            handleRowChange(record.id, 'group_customer_name', newVal?.name);
+          }}
+          disabled={false}
+          placeholder={placeholder}
+          field={{related_module:nameModule}}
         />
       )
     },
@@ -71,7 +77,7 @@ export default function PricePolicySection({ pricePolicies, setPricePolicies }) 
         <Input
           placeholder="Nhập UPC..."
           value={value}
-          onChange={(e) => handleFieldChange(record.id, 'upc', e.target.value)}
+          onChange={(e) =>  handleRowChange(record.id, 'upc', e.target.value)}
         />
       )
     },
@@ -85,7 +91,7 @@ export default function PricePolicySection({ pricePolicies, setPricePolicies }) 
           placeholder="0"
           value={value}
           style={{ width: '100%' }}
-          onChange={(e) => handleFieldChange(record.id, 'price_without_vat', e.target.value)}
+          onChange={(e) =>  handleRowChange(record.id, 'price_without_vat', e.target.value)}
         />
       )
     },

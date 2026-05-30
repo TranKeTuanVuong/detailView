@@ -97,7 +97,7 @@ export default function EditView() {
   const [lineItems, setLineItems] = useState([]);
   // 🔥 1. KHỞI TẠO STATE CHỨA MẢNG CHÍNH SÁCH GIÁ ĐỘNG (Mặc định cho sẵn 1 dòng ban đầu giống ảnh)
   const [pricePolicies, setPricePolicies] = useState([
-    { id: 'policy_init', group_customer_id: undefined, upc: '', price_without_vat: '' }
+    { id: 'policy_init',group_customer:{ group_customer_id: undefined,group_customer_name:undefined}, upc: '', price_without_vat: '' }
   ]);
 
   const handleFormChange = (fieldName, newValue) => {
@@ -295,12 +295,14 @@ export default function EditView() {
 </Row>
 
       {/* ================= LINE ITEMS SECTION ================= */}
-      {lineItemsPanels.map((panel) => {
+      {lineItemsPanels.map((panel,index) => {
   // Điều kiện 1: Nếu là module chính sách giá thì render bảng chính sách giá
   if (panel.line_item_source_module === 'Sgt_price_policy') {
     return (
       <PricePolicySection 
-        key={panel.key || panel.id}
+        key={index}
+        nameModule={'sgt_group_customer'}
+        placeholder={'Nhóm khách hàng'}
         pricePolicies={pricePolicies}
         setPricePolicies={setPricePolicies}
       />
@@ -310,7 +312,7 @@ export default function EditView() {
   // Điều kiện 2: Các module còn lại (như đơn hàng, sản phẩm...) thì render bảng sản phẩm thường
   return (
     <LineItemsSection 
-      key={panel.module}
+      key={index}
       panel={panel} // 🔥 SỬA: Chỉ truyền panel hiện tại thay vì truyền cả mảng lineItemsPanels
       lineItems={lineItems}
       setLineItems={setLineItems}

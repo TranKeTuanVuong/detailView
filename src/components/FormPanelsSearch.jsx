@@ -94,7 +94,7 @@ export default function FormPanelsSearch({ allPanels, formData, handleFormChange
                   optionFilterProp="children"
                   value={selectedCus?.value || null}
                   onChange={handleSelectCustomer}
-                  dropdownRender={renderDropdownHeader}
+                  popupRender={renderDropdownHeader}   // ✅ FIX
                   suffixIcon={<SearchOutlined style={{ fontSize: 18, color: '#bfbfbf' }} />}
                   filterOption={(input, option) =>
                     (option?.label ?? '').toLowerCase().includes(input.toLowerCase()) ||
@@ -122,12 +122,10 @@ export default function FormPanelsSearch({ allPanels, formData, handleFormChange
                 {!selectedCus ? (
                   /* TRẠNG THÁI 1: CHƯA CHỌN KHÁCH */
                   <Empty
-                    image={Empty.PRESENTED_IMAGE_SIMPLE}
-                    imageStyle={{ height: 60, opacity: 0.5 }}
-                    description={
-                      <Text type="secondary" style={{ fontSize: 13 }}>Chưa có thông tin khách hàng</Text>
-                    }
-                  />
+                    styles={{
+                      image: { height: 60, opacity: 0.5 }
+                    }}
+                  />        
                 ) : (
                   /* TRẠNG THÁI 2: ĐÃ CHỌN KHÁCH (HIỆN CHI TIẾT) */
                   <div style={{ animation: 'fadeIn 0.3s' }}>

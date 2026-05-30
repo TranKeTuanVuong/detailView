@@ -33,10 +33,16 @@ export default function LineItemsSection({
     if (cleanName.includes('discount')) return 'discount';
     return cleanName;
   };
+ const cleanLineItemName = (text) => {
+  if (!text) return '';
+  
+  // 🔥 Regex mới: Tìm tất cả ký tự/số đứng sau chữ "item" và đứng trước "_c" để xóa
+  return text.trim().replace(/(?<=item)[a-zA-Z0-9]+(?=_c$)/, '');
+};
 
   const groupedFields = {};
   (panel.fields || [])
-    .filter(field => field.name !== 'line_item_c')
+    .filter(field => cleanLineItemName(field.name) !== 'line_item_c')
     .forEach(field => {
       const normalized = normalizeFieldName(field.name);
       if (!groupedFields[normalized]) groupedFields[normalized] = [];

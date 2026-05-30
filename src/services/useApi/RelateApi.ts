@@ -28,6 +28,7 @@ export const RelateApi = (field: any) => {
     try {
       setLoading(true);
       const res = await fetchListViewLayout(module, page, limit, currentSearch);
+      console.log("kq========",res)
       
       if (!res || !res.success) {
         console.warn("Không lấy được dữ liệu hoặc API trả về thất bại");

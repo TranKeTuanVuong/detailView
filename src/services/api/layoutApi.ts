@@ -1,6 +1,11 @@
-const API_URL = import.meta.env.DEV
-  ? 'https://demo.saigongreentech.com/baotramdev'
-  : 'https://demo.saigongreentech.com/baotramdev';
+// const API_URL = import.meta.env.DEV
+//   ? 'https://demo.saigongreentech.com/baotramdev'
+//   : 'https://demo.saigongreentech.com/baotramdev';
+
+  const API_URL = import.meta.env.DEV
+  ? ''
+  : 'http://localhost/baotram';
+
 
 /**
  * Lấy cấu trúc layout EditView
@@ -10,7 +15,7 @@ export const fetchEditViewLayout = async (
   type: string
 ) => {
   try {
-    
+   
     const response = await fetch(
       `${API_URL}/index.php?entryPoint=meta_layout&module=${module}&type=${type}`
     );

@@ -1,65 +1,81 @@
 import React from 'react';
-import { Card, Tabs, Row, Col, Typography } from 'antd';
+import { Card, Row, Col, Typography } from 'antd';
 
 const { Text } = Typography;
 
 export default function FormTabs({ allTabs, formData, handleFormChange, cleanSystemLabel, RenderField }) {
   if (!allTabs || allTabs.length === 0) return null;
 
-  const tabItems = allTabs.map((tab) => ({
-    key: tab.key,
-    label: tab.key === 'default' ? 'Thông tin đơn hàng' : cleanSystemLabel(tab.label),
-    children: (
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-        {/* 🔥 Khống chế nội dung vừa khít 5 fields đầu, còn lại tự cuộn */}
-        <div 
-          className="tab-scroll-area" 
-          style={{ 
-            padding: '16px 12px 0 12px',
-            height: '240px',       // Chiều cao lý tưởng cho đúng 5 hàng fields
-            overflowY: 'auto',     // Tự động xuất hiện thanh cuộn dọc khi nhiều hơn 5 fields
-            overflowX: 'hidden'
-          }}
-        >
-          {(tab.fields || []).map((field) => (
-            <Row key={field.name} gutter={12} align="middle" style={{ marginBottom: 14 }}>
-              <Col span={9}>
-                {field.type !== 'bool' && !field.hide_label ? (
-                  <Text style={{ fontSize: 13, color: '#333', fontWeight: 500 }} ellipsis={{ tooltip: cleanSystemLabel(field.label) }}>
-                    {cleanSystemLabel(field.label)}
-                  </Text>
-                ) : <div />}
-              </Col>
-              <Col span={15}>
-                <RenderField
-                  field={field}
-                  value={formData[field.name]}
-                  onChange={(newVal) => handleFormChange(field.name, newVal)}
-                />
-              </Col>
-            </Row>
-          ))}
-        </div>
-
-        {/* 🔥 SPACER: Khối đệm tự động phình to để đẩy chiều cao Card bằng khít với Panel trái */}
-        <div style={{ flex: 1, minHeight: '10px' }} />
-      </div>
-    )
-  }));
-
   return (
-    <Card
-      className="card"
-      /* Ép Card chiếm trọn 100% chiều cao của cột để bằng khít viền Panel trái */
-      style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden', marginBottom: 0 }}
-      styles={{ body: { padding: 0, flex: 1, display: 'flex', flexDirection: 'column' } }}
+    <div 
+      className="tabs-to-cards-container" 
+      style={{ 
+        display: 'flex', 
+        flexDirection: 'column', 
+        gap: '16px',          // Khoảng cách giữa các khối Card xếp chồng lên nhau
+        width: '100%' 
+      }}
     >
-      <Tabs 
-        type="line" 
-        items={tabItems} 
-        className="dynamic-tabs" 
-        style={{ flex: 1, display: 'flex', flexDirection: 'column' }} 
-      />
-    </Card>
+      {/* 🔥 VÒNG LẶP: Mỗi phần tử Tab trong mảng allTabs sẽ được render thành 1 Card riêng biệt */}
+      {allTabs.map((tab) => {
+        // Định dạng lại tiêu đề hiển thị: Nếu là key 'default' thì đổi thành 'Thông tin đơn hàng', ngược lại dùng label hệ thống
+        const cardTitle = tab.key === 'default' ? 'Thông tin đơn hàng' : cleanSystemLabel(tab.label);
+
+        return (
+          <Card
+            key={tab.key}
+            title={<span style={{ fontWeight: 600, fontSize: 14 }}>{cardTitle}</span>}
+            className="custom-erp-card"
+            style={{ 
+              width: '100%',
+              borderRadius: '8px',
+              boxShadow: '0 1px 2px rgba(0, 0, 0, 0.03)'
+            }}
+            styles={{ body: { padding: '16px 12px' } }}
+          >
+            {/* Nội dung bên trong của từng Card (Danh sách các fields thuộc Tab đó) */}
+            <div 
+              className="card-fields-area"
+              style={{
+                // Khống chế nếu Card nào có quá nhiều trường (fields) thì tự sinh cuộn dọc nội bộ
+                maxHeight: '260px', 
+                overflowY: 'auto',
+                overflowX: 'hidden'
+              }}
+            >
+              {(tab.fields || []).map((field) => (
+                <Row key={field.name} gutter={12} align="middle" style={{ marginBottom: 12 }}>
+                  {/* Cột hiển thị Nhãn (Label) */}
+                  <Col span={9}>
+                    {field.type !== 'bool' && !field.hide_label ? (
+                      <Text 
+                        style={{ fontSize: 13, color: '#555', fontWeight: 500 }} 
+                        ellipsis={{ tooltip: cleanSystemLabel(field.label) }}
+                      >
+                        {cleanSystemLabel(field.label)}
+                      </Text>
+                    ) : <div />}
+                  </Col>
+
+                  {/* Cột hiển thị Ô nhập liệu (Input/Select...) */}
+                  <Col span={15}>
+                    <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                      <span style={{ color: '#bfbfbf', marginRight: 4 }}>:</span>
+                      <div style={{ flex: 1 }}>
+                        <RenderField
+                          field={field}
+                          value={formData[field.name]}
+                          onChange={(newVal) => handleFormChange(field.name, newVal)}
+                        />
+                      </div>
+                    </div>
+                  </Col>
+                </Row>
+              ))}
+            </div>
+          </Card>
+        );
+      })}
+    </div>
   );
 }
