@@ -1,8 +1,8 @@
 import React,{useEffect,useState} from "react";
-import { DatePicker, Typography } from 'antd';
+import { Alert, DatePicker, Typography } from 'antd';
 import dayjs from 'dayjs';
 const { Text, Title } = Typography;
-import {fetchEditViewLayout,fetchListViewLayout } from '../api/layoutApi';
+import {fetchEditViewLayout,fetchListViewLayout,saveUniversalModuleData } from '../api/layoutApi';
 
 
 
@@ -108,6 +108,23 @@ export const DetailApi = () => {
         }, []);
 
 
+    const handleSave = async (data: any) => { 
+        try {
+            const res = await saveUniversalModuleData(data);
+            if (res.success) {
+                console.log('Dữ liệu đã được lưu thành công');
+                alert('Dữ liệu đã được lưu thành công');
+              
+            } else {
+                console.warn('Lỗi khi lưu dữ liệu:', res.message);
+                alert('Lỗi khi lưu dữ liệu');
+            }
+
+        }catch (error) { 
+            console.error('Lỗi khi lưu dữ liệu:', error);
+            throw error;
+        }
+    }  
 
 
    
@@ -124,7 +141,7 @@ export const DetailApi = () => {
         loading,
         module,
         setModule,
-        handleLayOut
+        handleLayOut,handleSave
 
       
        

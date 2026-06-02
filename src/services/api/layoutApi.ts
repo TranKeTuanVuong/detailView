@@ -55,3 +55,21 @@ export const fetchListViewLayout = async (
     throw error;
   }
 };
+
+
+export const saveUniversalModuleData = async (payload: any) => {
+  try{
+      const response = await fetch('index.php?entryPoint=save_universal_module_data', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+   const result = await response.json();
+   return result;
+  }catch(error){
+    console.warn(error);
+    throw error;
+  }
+}

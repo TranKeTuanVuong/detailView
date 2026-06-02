@@ -1,45 +1,131 @@
-import React from 'react';
-import { Card, Table, Button, Select, Input, Typography } from 'antd';
+import React, { useEffect } from 'react';
+import { Card, Table, Button, Input, InputNumber, Typography } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
-
 import RelateModelSelect from './RelateModelSelect';
 
 const { Text } = Typography;
 
-export default function PricePolicySection({nameModule,placeholder, pricePolicies, setPricePolicies }) {
-  
+export default function PricePolicySection({ 
+  fields = [], 
+  lineItemLabel, 
+  pricePolicies = [],     // ✅ Nhận trực tiếp mảng dữ liệu từ cha đưa xuống
+  setPricePolicies,       // ✅ Nhận trực tiếp hàm cập nhật State tổng của cha
+  isLayoutLoading = false // ✅ Trạng thái loading layout từ cha để chặn ghi đè dữ liệu cũ
+}) {
 
+  // =================================================================
+  // ĐỒNG BỘ KHỞI TẠO: Chỉ tự thêm 1 dòng trống khi thực sự là ĐƠN TẠO MỚI 
+  // =================================================================
+  useEffect(() => {
+    // Nếu hệ thống đang fetch dữ liệu cũ từ DB, tuyệt đối không tự ý chèn dòng trống
+    if (isLayoutLoading) return;
 
-  // 2. Hàm thêm một dòng chính sách giá mới tinh chỉnh chuẩn cấu trúc dữ liệu
+    if (pricePolicies.length === 0 && fields.length > 0) {
+      const initialRow = { id: `policy_init_${Date.now()}` };
+      fields.forEach(f => {
+        initialRow[f.name] = f.default !== undefined ? f.default : '';
+      });
+      setPricePolicies([initialRow]);
+    }
+  }, [fields, pricePolicies.length, setPricePolicies, isLayoutLoading]);
+
+  // Lọc bỏ ID hệ thống và sắp xếp thứ tự hiển thị cột theo cấu hình layout con
+  const displayFields = fields
+    .filter(f => f.name !== 'id' && f.type !== 'id' && f.name !== f.related_id_field)
+    .sort((a, b) => (a.col || 0) - (b.col || 0));
+
+  // 1. Hàm thêm dòng mới
   const handleAddRow = () => {
-    setPricePolicies(prev => [
-      ...prev,
-      {
-        id: `policy_${Date.now()}`, // Tạo khóa id duy nhất tạm thời
-        group_customer_id: undefined,
-        upc: '',
-        price_without_vat: ''
-      }
-    ]);
+    const newRow = {
+      id: `row_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`
+    };
+    fields.forEach(f => {
+      newRow[f.name] = f.default !== undefined ? f.default : '';
+    });
+    // Gọi callback an toàn để đẩy phần tử mới vào mảng ở cha
+    setPricePolicies(currentArray => [...currentArray, newRow]); 
   };
 
-  // 3. Hàm xóa một dòng dựa trên ID
+  // 2. Hàm xóa dòng
   const handleRemoveRow = (id) => {
-    setPricePolicies(prev => prev.filter(item => item.id !== id));
+    setPricePolicies(currentArray => currentArray.filter(item => item.id !== id));
   };
 
- const handleRowChange = (rowKey, field, value) => {
-  setPricePolicies(prev =>
-    prev.map(row =>
-      row.id === rowKey
-        ? { ...row, [field]: value }
-        : row
-    )
-  );
-};
+  // 3. Hàm cập nhật field thông thường cho dòng (gõ ký tự nào cập nhật ngay ký tự đó)
+  const handleRowChange = (rowId, fieldName, value) => {
+    setPricePolicies(currentArray =>
+      currentArray.map(row => (row.id === rowId ? { ...row, [fieldName]: value } : row))
+    );
+  };
 
+  // 4. Hàm cập nhật riêng kiểu Relate thích ứng cấu trúc lai Object {id, name} của API
+  const handleRelateChange = (rowId, relateField, selectedData) => {
+    setPricePolicies(currentArray =>
+      currentArray.map(row => {
+        if (row.id === rowId) {
+          return {
+            ...row,
+            [relateField.name]: selectedData ? {
+              id: selectedData.id,
+              name: selectedData.name,
+              module: relateField.related_module
+            } : null,
+            [relateField.related_id_field]: selectedData?.id || ''
+          };
+        }
+        return row;
+      })
+    );
+  };
 
-  // 5. Cấu trúc các cột hiển thị khớp hoàn toàn với ảnh mẫu thiết kế của bạn
+  // 5. Render Cell động bám sát Metadata layout con
+  const renderCellComponent = (field, record, value) => {
+    switch (field.type) {
+      case 'relate':
+        // Xử lý an toàn: dữ liệu truyền vào có thể là Object chuẩn hoặc String thô từ database cũ
+        const currentRelateValue = typeof value === 'object' && value !== null
+          ? value 
+          : { id: record[field.related_id_field], name: value || '' };
+
+        return (
+          <RelateModelSelect
+            value={currentRelateValue}
+            onChange={(newVal) => handleRelateChange(record.id, field, newVal)}
+            disabled={field.readonly}
+            placeholder={`Chọn ${field.label}...`}
+            field={{ related_module: field.related_module }}
+          />
+        );
+
+      case 'currency':
+        return (
+          <InputNumber
+            placeholder={field.default || '0'}
+            value={value}
+            disabled={field.readonly}
+            style={{ width: '100%' }}
+            formatter={val => `${val}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+            parser={val => val.replace(/\$\s?|(,*)/g, '')}
+            onChange={(val) => handleRowChange(record.id, field.name, val)}
+          />
+        );
+
+      case 'varchar':
+      case 'name':
+      default:
+        return (
+          <Input
+            placeholder={`Nhập ${field.label}...`}
+            value={value}
+            disabled={field.readonly}
+            maxLength={Number(field.len) || undefined}
+            onChange={(e) => handleRowChange(record.id, field.name, e.target.value)}
+          />
+        );
+    }
+  };
+
+  // 6. Cấu hình danh sách cột cho AntD Table
   const columns = [
     {
       title: 'STT',
@@ -48,55 +134,15 @@ export default function PricePolicySection({nameModule,placeholder, pricePolicie
       align: 'center',
       render: (_, __, index) => <Text style={{ color: '#666' }}>{index + 1}</Text>
     },
+    ...displayFields.map(field => ({
+      title: field.label,
+      dataIndex: field.name,
+      key: field.name,
+      align: field.type === 'currency' ? 'right' : 'left', 
+      render: (value, record) => renderCellComponent(field, record, value)
+    })),
     {
-      title: placeholder,
-      dataIndex: 'group_customer_id',
-      key: 'group_customer_id',
-      render: (value, record) => (
-        <RelateModelSelect
-         value={{
-            id: record.group_customer_id,
-            name: record.group_customer_name
-          }}
-         onChange={(newVal) => {
-            handleRowChange(record.id, 'group_customer_id', newVal?.id);
-            handleRowChange(record.id, 'group_customer_name', newVal?.name);
-          }}
-          disabled={false}
-          placeholder={placeholder}
-          field={{related_module:nameModule}}
-        />
-      )
-    },
-    {
-      title: 'UPC',
-      dataIndex: 'upc',
-      key: 'upc',
-      width: '25%',
-      render: (value, record) => (
-        <Input
-          placeholder="Nhập UPC..."
-          value={value}
-          onChange={(e) =>  handleRowChange(record.id, 'upc', e.target.value)}
-        />
-      )
-    },
-    {
-      title: 'Giá chưa VAT',
-      dataIndex: 'price_without_vat',
-      key: 'price_without_vat',
-      width: '30%',
-      render: (value, record) => (
-        <Input
-          placeholder="0"
-          value={value}
-          style={{ width: '100%' }}
-          onChange={(e) =>  handleRowChange(record.id, 'price_without_vat', e.target.value)}
-        />
-      )
-    },
-    {
-      title: 'Xóa',
+      title: 'Hành động',
       key: 'action_delete',
       width: 100,
       align: 'center',
@@ -106,7 +152,7 @@ export default function PricePolicySection({nameModule,placeholder, pricePolicie
           danger
           shape="round"
           icon={<DeleteOutlined />}
-          style={{ textTransform: 'uppercase', fontSize: 12, fontWeight: 500 }}
+          style={{ fontSize: 12, fontWeight: 500 }}
           onClick={() => handleRemoveRow(record.id)}
         >
           Xóa
@@ -117,21 +163,21 @@ export default function PricePolicySection({nameModule,placeholder, pricePolicie
 
   return (
     <Card
-      title={<span style={{ fontWeight: 600, fontSize: 14, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Chính sách giá</span>}
+      title={<span style={{ fontWeight: 600, fontSize: 14, textTransform: 'uppercase' }}>{lineItemLabel}</span>}
       style={{ marginTop: 16, borderRadius: 8, boxShadow: '0 1px 2px rgba(0,0,0,0.03)' }}
       styles={{ body: { padding: '16px' } }}
     >
       <Table
         rowKey="id"
         pagination={false}
-        dataSource={pricePolicies}
+        // Đảm bảo dataSource luôn nhận định dạng mảng để không bị dính lỗi .some() của AntD
+        dataSource={Array.isArray(pricePolicies) ? pricePolicies : []} 
         columns={columns}
         bordered
-        locale={{ emptyText: 'Chưa có cấu hình chính sách giá nào cho sản phẩm này' }}
+        locale={{ emptyText: 'Chưa có cấu hình dữ liệu nào' }}
         style={{ marginBottom: 16 }}
       />
 
-      {/* NÚT THÊM DÒNG CHUẨN UI XANH DƯƠNG ĐẬM CỦA BẠN */}
       <Button
         type="primary"
         icon={<PlusOutlined />}
@@ -146,7 +192,7 @@ export default function PricePolicySection({nameModule,placeholder, pricePolicie
         }}
         onClick={handleAddRow}
       >
-        Thêm chính sách giá
+        Thêm dòng mới
       </Button>
     </Card>
   );

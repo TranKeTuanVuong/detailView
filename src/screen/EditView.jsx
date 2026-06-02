@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
-import { Row, Col, Typography, Input, Select, DatePicker, Checkbox, InputNumber, Button, Spin } from 'antd';
+import React, { useState, useEffect } from 'react';
+import { Row, Col, Typography, Input, Select, DatePicker, Checkbox, InputNumber, Button, Spin, message } from 'antd';
 import dayjs from 'dayjs';
 
 import RelateModelSelect from '../components/RelateModelSelect';
 import { DetailApi } from '../services/useApi/DetaialApi';
 
-// Import 3 Subcomponents vừa tách lẻ
+// Import các Subcomponents tháp cấu trúc UI vệ tinh
 import FormPanels from '../components/FormPanels';
 import FormPanelsSearch from '../components/FormPanelsSearch';
 import FormTabs from '../components/FormTabs';
@@ -21,7 +21,6 @@ const { TextArea } = Input;
 /* ================= LABEL CLEAN ================= */
 const cleanSystemLabel = (label) => {
   if (!label) return '';
-
   const upperLabel = label.trim().toUpperCase();
   if (upperLabel === 'LBL_ORDER_INFORMATION' || upperLabel === 'DEFAULT') return 'Thông tin đơn hàng';
   if (upperLabel === 'LBL_DETAILVIEW_PANEL1') return 'Thông tin chi tiết';
@@ -37,7 +36,7 @@ const cleanSystemLabel = (label) => {
   return label;
 };
 
-/* ================= COMPONENT ĐIỀU PHỐI FIELD RENDERER ================= */
+/* ================= COMPONENT ĐIỀU PHỐI FIELD RENDERER DYNAMIC ================= */
 const RenderField = ({ field, value, onChange }) => {
   const labelText = cleanSystemLabel(field.label);
   const isReadOnly = field.readonly === true || field.readonly === 1;
@@ -83,58 +82,112 @@ const RenderField = ({ field, value, onChange }) => {
   }
 };
 
-/* ================= MAIN CONFIG VIEW ================= */
-export default function EditView() {
+/* ================= MAIN CONFIG EDITVIEW ================= */
+export default function EditView({ recordId }) {
   const {
-  urls,
-  layout,
-  loading,
-  module,
-  setModule,
-  handleLayOut
-} = DetailApi();
+    urls,
+    layout,
+    loading,
+    module,
+    setModule,
+    handleLayOut,handleSave
+  } = DetailApi();
+
+  // 1. STATE QUẢN LÝ DỮ LIỆU ĐỘNG TỔNG THỂ
   const [formData, setFormData] = useState({});
-  const [lineItems, setLineItems] = useState([]);
-  // 🔥 1. KHỞI TẠO STATE CHỨA MẢNG CHÍNH SÁCH GIÁ ĐỘNG (Mặc định cho sẵn 1 dòng ban đầu giống ảnh)
-  const [pricePolicies, setPricePolicies] = useState([
-    { id: 'policy_init',group_customer:{ group_customer_id: undefined,group_customer_name:undefined}, upc: '', price_without_vat: '' }
-  ]);
+  const [panelsData, setPanelsData] = useState({});
 
-  const handleFormChange = (fieldName, newValue) => {
-    setFormData(prev => ({ ...prev, [fieldName]: newValue }));
+  // Cầu nối cô lập cho module chi tiết đơn hàng (sgt_orderdetail)
+  const lineItems = panelsData['sgt_orderdetail'] || [];
+  const [pricePolicyData, setPricePolicyData] = useState([]);
+  const setLineItems = (newDataOrFn) => {
+    handlePanelDataChange('sgt_orderdetail', newDataOrFn);
   };
 
-  const handleSaveForm = () => {
-    const formattedFormData = { ...formData };
-    const activePanelsAndTabs = [...(layout?.panels || []), ...(layout?.tabs || [])];
-    
-    activePanelsAndTabs.forEach(section => {
-      (section.fields || []).forEach(field => {
-        if ((field.type === 'relate' || field.type === 'flex_relate') && formattedFormData[field.name]) {
-          const relateObj = formattedFormData[field.name];
-          if (typeof relateObj === 'object') {
-            formattedFormData[`${field.name}_id`] = relateObj.id; 
-            formattedFormData[field.name] = relateObj.name;       
-          }
-        }
+  // 2. KHỞI TẠO MẢNG RỖNG CHO CÁC PANEL NGẪU NHIÊN KHI CẤU TRÚC LAYOUT SẴN SÀNG
+  useEffect(() => {
+    if (layout?.line_items_panels) {
+      const initialEmptyPanels = {};
+      layout.line_items_panels.forEach(panel => {
+        initialEmptyPanels[panel.line_item_source_module] = [];
       });
-    });
+      setPanelsData(initialEmptyPanels);
+    }
+  }, [layout?.line_items_panels]);
 
-    const finalPayload = {
-      module: layout?.module,
-      form_data: formattedFormData, 
-      line_items: lineItems,
-      price_policies:pricePolicies      
-    };
-
-    console.log("🚀 [FINAL PAYLOAD TO API]:", finalPayload);
-    alert("Đã gom dữ liệu thành công! Xem chi tiết tại tab Console.");
+  const handleFormChange = (fieldName, value) => {
+    setFormData(prev => ({ ...prev, [fieldName]: value }));
   };
 
+  // =================================================================
+  // ĐÃ SỬA: HÀM CẬP NHẬT PANEL ĐỘNG AN TOÀN TUYỆT ĐỐI (TRÁNH TRÔI/MẤT CHỮ)
+  // =================================================================
+  const handlePanelDataChange = (moduleKey, dataOrFn) => {
+    setPanelsData(prev => {
+      const currentPanelData = prev[moduleKey] || [];
+      const updatedPanelData = typeof dataOrFn === 'function' 
+        ? dataOrFn(currentPanelData) 
+        : dataOrFn;
+
+      return {
+        ...prev,
+        [moduleKey]: updatedPanelData
+      };
+    });
+  };
+
+  // =================================================================
+  // ĐỘNG CƠ GOM CỤM ĐỘNG VÀ LƯU DỮ LIỆU TỔNG QUÁT LÊN APIS PHP
+  // =================================================================
+ const handleSaveForm = async () => {
+  const formattedFormData = { ...formData };
+  const activePanelsAndTabs = [...(layout?.panels || []), ...(layout?.tabs || [])];
+  
+  // Chuẩn hóa cấu trúc các trường Relate của ô nhập form chính
+  activePanelsAndTabs.forEach(section => {
+    (section.fields || []).forEach(field => {
+      if ((field.type === 'relate' || field.type === 'flex_relate') && formattedFormData[field.name]) {
+        const relateObj = formattedFormData[field.name];
+        if (typeof relateObj === 'object') {
+          const idFieldName = field.related_id_field || `${field.name}_id`;
+          formattedFormData[idFieldName] = relateObj.id; 
+          formattedFormData[field.name] = relateObj.name;       
+        }
+      }
+    });
+  });
+
+  // Gom dữ liệu các bảng con ngẫu nhiên bám sát theo Metadata Layout đang có
+  const dynamicLineItemsData = {};
+  (layout?.line_items_panels || []).forEach(panel => {
+    const moduleKey = panel.line_item_source_module;
+    const rawRows = panelsData[moduleKey] || [];
+
+    // 🔥 TIẾN HÀNH THANH LỌC DỮ LIỆU BẢNG CON TẠI ĐÂY
+    dynamicLineItemsData[moduleKey] = rawRows.map(item => {
+      // Bóc tách _all_shipments và shipment_data ra ngoài, gom tất cả trường còn lại vào 'cleanItem'
+      const { _all_shipments, shipment_data, ...cleanItem } = item;
+      
+      return cleanItem; // Trả về object sạch chỉ chứa các trường cần lưu xuống Database
+    });
+  });
+
+  const finalPayload = {
+    parent_module: layout?.module,
+    parent_id: formattedFormData?.id || recordId || '', 
+    parent_fields: formattedFormData,
+    line_items_data: dynamicLineItemsData 
+  };
+
+  console.log("🚀 [FINAL PAYLOAD ĐÃ ĐƯỢC LỌC SẠCH]:", finalPayload);
+  
+  // Kích hoạt hàm gọi API lưu chính thức
+  // await handleSave(finalPayload);
+};
   if (loading || !layout) {
     return (
       <div style={{ height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-        <Spin size="large" description="Đang tải cấu hình dữ liệu..." />
+        <Spin size="large" description="Đang tải cấu hình giao diện..." />
       </div>
     );
   }
@@ -142,67 +195,50 @@ export default function EditView() {
   const allPanels = layout.panels || [];
   const allTabs = layout.tabs || [];
   const lineItemsPanels = layout.line_items_panels || [];
-
   const hasTabs = allTabs.length > 0;
 
-  /* ================= HOOK XỬ LÝ CHỌN SẢN PHẨM Ở BẢNG CON ================= */
-  const handleSelectProduct = (productId, option) => {
-    const selectedProduct = option.product || {};
-    setLineItems(prev => {
-      const isExist = prev.some(item => item.line_item_c === productId);
-      if (isExist) {
-        return prev.map(item => {
-          if (item.line_item_c !== productId) return item;
-          const newQty = Number(item.qty_c || 0) + 1;
-          const price = Number(item.price_c || 0);
-          const discount = Number(item.discount_sp_c || 0);
-          const discType = item.discount_type_sp_c || 'direct';
-          let total = price * newQty;
-          if (discType === 'percent') total -= (total * discount / 100);
-          else total -= (discount * newQty);
-
-          return { ...item, qty_c: newQty, origin_amount: total > 0 ? total : 0 };
-        });
-      }
-      return [
-        ...prev,
-        {
-          id: Date.now(), 
-          line_item_c: productId,
-          name_sp_c: selectedProduct.name || option.label,
-          product_image_c: selectedProduct.image || '',
-          price_c: Number(selectedProduct.price || 0),
-          discount_sp_c: 0,
-          discount_type_sp_c: 'direct', 
-          qty_c: 1, 
-          shipment_data: selectedProduct.shipment_data[0],
-          origin_amount: Number(selectedProduct.price || 0)
-        }
-      ];
-    });
-  };
 
   const handleRemoveLine = (index) => {
     setLineItems(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleTableFieldChange = (id, fieldName, value) => {
-    setLineItems(prev => prev.map(item => {
-      if (item.id !== id) return item;
-      const updatedItem = { ...item, [fieldName]: value };
-      const qty = Number(updatedItem.qty_c || 0);
-      const price = Number(updatedItem.price_c || 0);
-      const discount = Number(updatedItem.discount_sp_c || 0);
-      const discType = updatedItem.discount_type_sp_c || 'direct';
+  setLineItems(prev => prev.map(item => {
+    if (item.id !== id) return item;
 
-      let total = price * qty;
-      if (discType === 'percent') total -= (total * discount / 100);
-      else total -= (discount * qty);
-      
-      updatedItem.origin_amount = total > 0 ? total : 0;
-      return updatedItem;
-    }));
-  };
+    // 🔥 1. CHẶN KIỂM TRA TỒN KHO KHI THAY ĐỔI SỐ LƯỢNG (qty_c)
+    if (fieldName === 'qty_c') {
+      const inputQty = Number(value || 0);
+      // Bốc số lượng có thể xuất bán tối đa của lô hàng đang chọn tại dòng này
+      const maxCanSell = Number(item.shipment_data?.qty_cansell ?? 0);
+
+      if (inputQty > maxCanSell) {
+        // Bắn thông báo đẩy cảnh báo người dùng ngoài giao diện
+        message.warning(
+          `Sản phẩm [${item.name_sp_c || 'Mặt hàng'}] - Lô [${item.shipment_data?.lot_name || 'Mặc định'}] chỉ còn tối đa ${maxCanSell} sản phẩm khả dụng!`
+        );
+        return item; // 🔴 CHẶN ĐỨNG: Trả về trạng thái item cũ, không cập nhật số lượng quá tải
+      }
+    }
+
+    // 2. Nếu vượt qua bộ lọc hoặc thay đổi các trường khác (đơn giá, chiết khấu...), tiến hành tính toán lại tổng tiền
+    const updatedItem = { ...item, [fieldName]: value };
+    const qty = Number(updatedItem.qty_c || 0);
+    const price = Number(updatedItem.price_c || 0);
+    const discount = Number(updatedItem.discount_sp_c || 0);
+    const discType = updatedItem.discount_type_sp_c || 'direct';
+
+    let total = price * qty;
+    if (discType === 'percent') {
+      total -= (total * discount / 100);
+    } else {
+      total -= (discount * qty);
+    }
+    
+    updatedItem.origin_amount = total >= 0 ? total : 0;
+    return updatedItem;
+  }));
+};
 
   return (
     <div className="page" style={{ minHeight: '100vh', paddingBottom: '32px' }}>
@@ -210,32 +246,22 @@ export default function EditView() {
       <div className="header">
         <div>
           <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
-  <div style={{ flex: 1 }}>
-    <Title level={3} style={{ margin: 0 }}>
-      {layout.module_label || 'Chi tiết bản ghi'}
-    </Title>
-
-    <div style={{ marginTop: 8 }}>
-      <Text type="secondary">Module:</Text>
-
-      <Input
-        placeholder="Nhập module name"
-        value={module}
-        onChange={(e) => setModule(e.target.value)}
-        style={{ width: 250, marginLeft: 8 }}
-      />
-    </div>
-  </div>
-
-  <Button
-    type="primary"
-    size="large"
-    className="btn-primary-custom"
-   onClick={() => handleLayOut(module)}
-  >
-    Load lại
-  </Button>
-</div>
+            <div style={{ flex: 1 }}>
+              <Title level={3} style={{ margin: 0 }}>
+                {layout.module_label || 'Chi tiết bản ghi'}
+              </Title>
+              <div style={{ marginTop: 8 }}>
+                <Text type="secondary">Module:</Text>
+                <Input
+                  placeholder="Nhập module name"
+                  value={module}
+                  onChange={(e) => setModule(e.target.value)}
+                  style={{ width: 250, marginLeft: 8 }}
+                />
+              </div>
+            </div>
+            <Button type="primary" size="large" className="btn-primary-custom" onClick={() => handleLayOut(module)}>Load lại</Button>
+          </div>
         </div>
         <div className="header-buttons">
           <Button size="large">Hủy</Button>
@@ -248,83 +274,77 @@ export default function EditView() {
         </div>
       </div>
 
-{/* CORE WORKSPACE AREA */}
-<Row 
-  gutter={[16, 16]} 
-  className="workspace" 
-  style={{ display: 'flex', alignItems: 'stretch' }} // Kéo giãn các Col bằng nhau tăm tắp ở đáy
->
-  {/* LEFT COLUMN - PANELS */}
-  <Col 
-    xs={24} 
-    lg={hasTabs ? 17 : 24} 
-    style={{ display: 'flex', flexDirection: 'column' }}
-  >
-  {layout.module == "sgt_orders" ? 
-  (<FormPanelsSearch
-      allPanels={allPanels}
-      formData={formData}
-      handleFormChange={handleFormChange}
-      cleanSystemLabel={cleanSystemLabel}
-      RenderField={RenderField}
-  />):(<FormPanels 
-      allPanels={allPanels}
-      formData={formData}
-      handleFormChange={handleFormChange}
-      cleanSystemLabel={cleanSystemLabel}
-      RenderField={RenderField}
-    />)}
-  </Col>
+      {/* CORE WORKSPACE AREA PANEL BINDING */}
+      <Row gutter={[16, 16]} className="workspace" style={{ display: 'flex', alignItems: 'stretch' }}>
+        <Col xs={24} lg={hasTabs ? 17 : 24} style={{ display: 'flex', flexDirection: 'column' }}>
+          {layout.module === "sgt_orders" ? (
+            <FormPanelsSearch
+              allPanels={allPanels}
+              formData={formData}
+              handleFormChange={handleFormChange}
+              cleanSystemLabel={cleanSystemLabel}
+              RenderField={RenderField}
+              
+              setPricePolicyData={setPricePolicyData}
+            />
+          ) : (
+            <FormPanels 
+              allPanels={allPanels}
+              formData={formData}
+              handleFormChange={handleFormChange}
+              cleanSystemLabel={cleanSystemLabel}
+              RenderField={RenderField}
+            />
+          )}
+        </Col>
 
-  {/* RIGHT COLUMN - TABS */}
-  {hasTabs && (
-    <Col 
-      xs={24} 
-      lg={7} 
-      style={{ display: 'flex', flexDirection: 'column' }} // Ép cột Tab cao full bằng cột trái
-    >
-      <FormTabs 
-        allTabs={allTabs}
-        formData={formData}
-        handleFormChange={handleFormChange}
-        cleanSystemLabel={cleanSystemLabel}
-        RenderField={RenderField}
-      />
-    </Col>
-  )}
-</Row>
+        {hasTabs && (
+          <Col xs={24} lg={7} style={{ display: 'flex', flexDirection: 'column' }}>
+            <FormTabs 
+              allTabs={allTabs}
+              formData={formData}
+              handleFormChange={handleFormChange}
+              cleanSystemLabel={cleanSystemLabel}
+              RenderField={RenderField}
+            />
+          </Col>
+        )}
+      </Row>
 
-      {/* ================= LINE ITEMS SECTION ================= */}
-      {lineItemsPanels.map((panel,index) => {
-  // Điều kiện 1: Nếu là module chính sách giá thì render bảng chính sách giá
-  if (panel.line_item_source_module === 'Sgt_price_policy') {
-    return (
-      <PricePolicySection 
-        key={index}
-        nameModule={'sgt_group_customer'}
-        placeholder={'Nhóm khách hàng'}
-        pricePolicies={pricePolicies}
-        setPricePolicies={setPricePolicies}
-      />
-    );
-  }
+      {/* ================= ĐOẠN ĐIỀU PHỐI SECTION BẢNG CON ĐỘNG 100% NGẪU NHIÊN ================= */}
+      {lineItemsPanels.map((panel, index) => {
+        const moduleKey = panel.line_item_source_module;
 
-  // Điều kiện 2: Các module còn lại (như đơn hàng, sản phẩm...) thì render bảng sản phẩm thường
-  return (
-    <LineItemsSection 
-      key={index}
-      panel={panel} // 🔥 SỬA: Chỉ truyền panel hiện tại thay vì truyền cả mảng lineItemsPanels
-      lineItems={lineItems}
-      setLineItems={setLineItems}
-      formData={formData}                  
-      handleFormChange={handleFormChange}  
-      handleSelectProduct={handleSelectProduct}
-      handleRemoveLine={handleRemoveLine}
-      handleTableFieldChange={handleTableFieldChange}
-      cleanSystemLabel={cleanSystemLabel}
-    />
-  );
-})}
+        // KIỂU 1: Bảng chi tiết đơn hàng sản phẩm thường (Cần UI bốc tách xử lý tính toán tiền)
+        if (moduleKey === 'sgt_orderdetail') {
+          return (
+            <LineItemsSection 
+              key={moduleKey || index}
+              panel={panel}
+              lineItems={lineItems}
+              setLineItems={setLineItems}
+              formData={formData}                  
+              handleFormChange={handleFormChange}  
+              pricePolicyData={pricePolicyData}
+              handleRemoveLine={handleRemoveLine}
+              handleTableFieldChange={handleTableFieldChange}
+              cleanSystemLabel={cleanSystemLabel}
+            />
+          );
+        } 
+        
+        // KIỂU 2: TOÀN BỘ CÁC BẢNG CON NGẪU NHIÊN CÒN LẠI TRÊN ĐỜI (Tự sinh cột theo mảng fields)
+        return (
+          <PricePolicySection
+            key={moduleKey || index}
+            fields={panel.fields}
+            lineItemLabel={panel.line_item_source_module_label}
+            pricePolicies={panelsData[moduleKey] || []} 
+            setPricePolicies={(newData) => handlePanelDataChange(moduleKey, newData)} 
+            isLayoutLoading={false} // Chuyển hẳn thành false vì không còn luồng fetch dữ liệu cũ cản địa
+          />
+        );
+      })}
     </div>
   );
 }
