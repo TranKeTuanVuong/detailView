@@ -11,7 +11,7 @@ export default defineConfig({
     // Cấu hình Proxy để tránh lỗi CORS khi dev
     proxy: {
       '/index.php': {
-        target: 'http://localhost/baotram', // Đường dẫn đến thư mục SuiteCRM của bạn
+        target: 'http://localhost/baotramb1', // Đường dẫn đến thư mục SuiteCRM của bạn
         changeOrigin: true,
         secure: false,
       }

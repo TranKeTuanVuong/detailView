@@ -35,15 +35,29 @@ export default function FormPanelsSearch({ allPanels, formData, handleFormChange
       const result = await response.json();
 
       if (result.success && Array.isArray(result.data)) {
+      
+        
         // Chuẩn hóa cấu trúc bản ghi DB Accounts tương thích với cấu trúc hiển thị UI Card
-        const formatted = result.data.map(acc => ({
-          value: acc.id,
-          label: acc.name,
-          phone: acc.phone_office || '',
-          address: acc.shipping_address_street || '',
-          makh: acc.makh || '',
-          raw: acc // Giữ lại data gốc nếu backend cần dùng sâu về sau
-        }));
+        const formatted = result.data.map(acc => {
+          // 🌟 TỐI ƯU: Tính toán trích xuất tên nhóm khách hàng ngay từ bước nạp dữ liệu API
+          const customerGroups = acc.customer_group_data;
+          const computedGroupName = (customerGroups && customerGroups.length > 0)
+            ? (customerGroups.length > 2
+                ? (customerGroups.find((g) => g && g.name)?.name || "")
+                : (customerGroups[0]?.name || "")
+              )
+            : "";
+
+          return {
+            value: acc.id,
+            label: acc.name,
+            phone: acc.phone_office || '',
+            address: acc.shipping_address_street || '',
+            makh: acc.makh || '',
+            group_customer_name: computedGroupName, // Lưu trữ chuỗi text tên nhóm sạch
+            raw: acc // Giữ lại data gốc nếu backend cần dùng sâu về sau
+          };
+        });
 
         setCustomers(prev => isLoadMore ? [...prev, ...formatted] : formatted);
         if (result.pagination) {
@@ -80,7 +94,8 @@ export default function FormPanelsSearch({ allPanels, formData, handleFormChange
           value: currentCustomerId,
           label: formData.customer?.name || formData.account_name,
           phone: formData.customer_phone || formData.phone_office || '',
-          address: formData.shipping_address || formData.shipping_address_street || ''
+          address: formData.shipping_address || formData.shipping_address_street || '',
+          group_customer_name: formData.group_customer_name || '' // 🌟 Khôi phục chính xác tên nhóm từ DB cũ đổ về form
         });
       }
     } else {
@@ -122,32 +137,55 @@ export default function FormPanelsSearch({ allPanels, formData, handleFormChange
     // Trích xuất chuỗi tên thuần an toàn
     const cleanLabel = option.label?.props?.children[1]?.props?.children || option.label || '';
     const rawData = option.raw || {};
+    
+    // Tính toán tên nhóm khách hàng ra một biến riêng trước từ option đã nạp
+    const customerGroups = option?.raw?.customer_group_data;
+    const computedGroupName = (customerGroups && customerGroups.length > 0)
+      ? (customerGroups.length > 2
+          ? (customerGroups.find((g) => g && g.name)?.name || "")
+          : (customerGroups[0]?.name || "")
+        )
+      : "";
 
+    // Cập nhật State Khách hàng hiển thị tại UI Card
     setSelectedCus({
       value: value,
       label: cleanLabel,
       phone: option.phone || '',
-      address: option.address || ''
+      address: option.address || '',
+      group_customer_name: computedGroupName 
     });
 
     // Cập nhật chính sách giá lập tức từ cục dữ liệu đính kèm ở Option
     const policies = rawData.price_policy_data || [];
     setPricePolicyData(policies);
 
-    // Cập nhật Form chính
+    // Cập nhật Form chính của SuiteCRM bài trừ độ trễ bất đồng bộ state bằng biến computedGroupName
     handleFormChange('customer_id', value);
     handleFormChange('account_id_c', value); 
     handleFormChange('account_name', cleanLabel);
-    if (option.address) handleFormChange('shipping_address', option.address);
+    handleFormChange('group_customer_name', computedGroupName);
+    
+    if (option.address) {
+      handleFormChange('shipping_address', option.address);
+    }
   };
 
+  // ✕ XỬ LÝ KHÔI PHỤC TRẠNG THÁI FORM & LOAD LẠI 20 KHÁCH HÀNG MẶC ĐỊNH
   const handleClearCustomer = () => {
     setSelectedCus(null);
     setPricePolicyData([]); // Trả về mảng rỗng ngay lập tức để LineItemsSection khôi phục lại đơn giá niêm yết cũ
+    
     handleFormChange('customer_id', '');
     handleFormChange('account_id_c', '');
     handleFormChange('account_name', '');
     handleFormChange('customer', null);
+    handleFormChange('group_customer_name', '');
+
+    // 🌟 RESET SEARCH: Đưa ô tìm kiếm về rỗng và nạp lại danh sách trang 1 mặc định ban đầu
+    setKeyword('');
+    setPage(1);
+    fetchCustomersFromAPI(1, '', false); 
   };
 
   const renderDropdownHeader = (menu) => (
@@ -208,6 +246,7 @@ export default function FormPanelsSearch({ allPanels, formData, handleFormChange
               style={{ flex: 1, display: 'flex', flexDirection: 'column', marginBottom: 0 }}
               styles={{ body: { padding: '16px', flex: 1, display: 'flex', flexDirection: 'column' } }}
             >
+              {/* SELECT SEARCH DROPDOWN */}
               <div style={{ marginBottom: 20 }}>
                 <Select
                   showSearch
@@ -230,7 +269,7 @@ export default function FormPanelsSearch({ allPanels, formData, handleFormChange
                       value={cus.value} 
                       phone={cus.phone} 
                       address={cus.address}
-                      raw={cus.raw} // 🔥 Đảm bảo truyền raw trực tiếp vào Option ở đây để bốc siêu nhanh
+                      raw={cus.raw} 
                       label={
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <UserOutlined style={{ color: '#1677ff' }} />
@@ -239,15 +278,32 @@ export default function FormPanelsSearch({ allPanels, formData, handleFormChange
                       }
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '4px 0' }}>
-                        <div style={{ width: 32, height: 32, borderRadius: '50%', backgroundColor: '#e6f4ff', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                        <div style={{ width: 32, height: 32, borderRadius: '50%', backgroundColor: '#e6f4ff', display: 'flex', justifyContent: 'center', alignItems: 'center', flexShrink: 0 }}>
                           <UserOutlined style={{ color: '#1677ff' }} />
                         </div>
-                        <div style={{ display: 'flex', flexDirection: 'column' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                             <Text strong style={{ fontSize: 14 }}>{cus.label}</Text>
+                            
+                            {/* Mã Khách Hàng */}
                             {cus.makh && <span style={{ fontSize: 10, backgroundColor: '#f5f5f5', padding: '1px 5px', borderRadius: 4, color: '#8c8c8c' }}>{cus.makh}</span>}
+                            
+                            {/* 🌟 THÊM MỚI: Hiển thị Tag Nhóm khách hàng màu xanh dương thông minh trong lúc gõ tìm kiếm */}
+                            {cus.group_customer_name && (
+                              <span style={{ 
+                                fontSize: 10, 
+                                backgroundColor: '#e6f7ff', 
+                                padding: '1px 6px', 
+                                borderRadius: 4, 
+                                color: '#1890ff',
+                                border: '1px solid #91d5ff',
+                                fontWeight: 500
+                              }}>
+                                {cus.group_customer_name}
+                              </span>
+                            )}
                           </div>
-                          <Text type="secondary" style={{ fontSize: 12 }}>{cus.phone !== '' ? cus.phone : 'Không có SĐT'}</Text>
+                          <Text type="secondary" style={{ fontSize: 12, marginTop: 2 }}>{cus.phone !== '' ? cus.phone : 'Không có SĐT'}</Text>
                         </div>
                       </div>
                     </Select.Option>
@@ -255,6 +311,7 @@ export default function FormPanelsSearch({ allPanels, formData, handleFormChange
                 </Select>
               </div>
 
+              {/* CARD PREVIEW CHI TIẾT KHÁCH HÀNG SAU KHI CHỌN */}
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                 {!selectedCus ? (
                   <Empty styles={{ image: { height: 60, opacity: 0.5 } }} />        
@@ -267,11 +324,34 @@ export default function FormPanelsSearch({ allPanels, formData, handleFormChange
                           <Text strong style={{ fontSize: 13, color: '#333', letterSpacing: '0.3px' }}>ĐỊA CHỈ GIAO HÀNG</Text>
                           <Text type="link" style={{ fontSize: 13, cursor: 'pointer' }}>Thay đổi</Text>
                         </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                          <Text strong style={{ fontSize: 14 }}>
-                            {selectedCus.label} {selectedCus.phone ? ` - ${selectedCus.phone}` : ''}
-                          </Text>
-                          <Text type="secondary" style={{ color: '#555', fontSize: 13, lineHeight: '1.5' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                            <Text strong style={{ fontSize: 14 }}>
+                              {selectedCus.label} {selectedCus.phone ? ` - ${selectedCus.phone}` : ''}
+                            </Text>
+
+                            {/* 🌟 THÊM MỚI: Hiển thị Tag tên nhóm khách hàng màu xanh lá nổi bật trên Card chi tiết */}
+                            {selectedCus.group_customer_name ? (
+                              <span style={{ 
+                                fontSize: 11, 
+                                backgroundColor: '#f6ffed', 
+                                color: '#52c41a', 
+                                border: '1px solid #b7eb8f', 
+                                padding: '1px 8px', 
+                                borderRadius: '4px',
+                                fontWeight: 600,
+                                display: 'inline-flex',
+                                alignItems: 'center'
+                              }}>
+                                👥 {selectedCus.group_customer_name}
+                              </span>
+                            ) : (
+                              <span style={{ fontSize: 11, color: '#bfbfbf', fontStyle: 'italic' }}>
+                                (Chưa cấu hình nhóm)
+                              </span>
+                            )}
+                          </div>
+                          <Text type="secondary" style={{ color: '#555', fontSize: 13, lineHeight: '1.5', marginTop: 4 }}>
                             {selectedCus.address || 'Chưa cập nhật địa chỉ'}
                           </Text>
                         </div>

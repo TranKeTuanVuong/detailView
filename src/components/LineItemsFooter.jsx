@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Row, Col, Input, Typography, Divider, InputNumber, Modal, Select, Button, message } from 'antd';
-
 const { Text } = Typography;
 const { TextArea } = Input;
+import PromoModal from './PromoModal'; // Nhớ check lại đường dẫn đúng tới file PromoModal.jsx
+import { GiftOutlined } from '@ant-design/icons';
 
-export default function LineItemsFooter({ lineItems, formData, handleFormChange }) {
+export default function LineItemsFooter({ lineItems, formData, handleFormChange, isPromoOpen, setIsPromoOpen, appliedPromos, handleApplyPromos }) {
   
   // --- 1. CÁC STATE QUẢN LÝ MODAL CHIẾT KHẤU NỘI BỘ ---
   const [discountModalOpen, setDiscountModalOpen] = useState(false);
@@ -12,7 +13,7 @@ export default function LineItemsFooter({ lineItems, formData, handleFormChange 
   const [discountValue, setDiscountValue] = useState(0);
 
   // 2. Tính toán tổng số tiền gốc của các sản phẩm trong giỏ hàng
-  const totalAmount = lineItems.reduce((sum, item) => sum + Number(item.origin_amount || 0), 0);
+  const totalAmount = lineItems.reduce((sum, item) => sum + Number(item.subtotal_c || 0), 0);
   const totalQty = lineItems.reduce((sum, item) => sum + Number(item.qty_c || 0), 0);
 
   // Đồng bộ dữ liệu cũ từ formData lên Modal khi người dùng mở lại Modal
@@ -74,10 +75,23 @@ export default function LineItemsFooter({ lineItems, formData, handleFormChange 
           </span>
         </Col>
         <Col>
-          <span style={{ color: '#1677ff', cursor: 'pointer', fontWeight: 500 }}>
-            🎁 Áp dụng chương trình khuyến mại
-          </span>
-        </Col>
+  <Button 
+    type="link" 
+    icon={<GiftOutlined />} 
+    onClick={() => setIsPromoOpen(true)}
+    style={{ fontWeight: 500, padding: 0, height: 'auto' }}
+  >
+    Áp dụng chương trình khuyến mại
+  </Button>
+  
+  <PromoModal 
+    isOpen={isPromoOpen} 
+    onClose={() => setIsPromoOpen(false)} 
+    onApply={handleApplyPromos} 
+    lineItems={lineItems}
+    formData={formData}
+  />
+</Col>
       </Row>
 
       <Row gutter={32}>

@@ -4,9 +4,101 @@ import dayjs from 'dayjs';
 import { PlusCircleOutlined } from '@ant-design/icons';
 import LineItemsFooter from '../components/LineItemsFooter';
 import QuickSelectProductModal from '../components/QuickSelectProductModal';
+import PromoModal from '../components/PromoModal';
 
 const { Text } = Typography;
 
+// =================================================================
+// 🌟 COMPONENT PHỤ: ĐỘNG CƠ CẬP NHẬT TIỀN REAL-TIME TUYỆT ĐỐI
+// =================================================================
+const QtyInputCell = ({ record, handleTableFieldChange, setLineItems }) => {
+  // Dùng state nội bộ để giữ tiêu điểm focus và gõ số mượt mà
+  const [localVal, setLocalVal] = useState(record.qty_c || 1);
+
+  // Đồng bộ ngược nếu giỏ hàng thay đổi từ các modal chọn nhanh bên ngoài
+  useEffect(() => {
+    setLocalVal(record.qty_c || 1);
+  }, [record.qty_c]);
+
+  return (
+    <InputNumber
+      size="small"
+      style={{ width: '75px' }}
+      min={1}
+      value={localVal}
+      onChange={(val) => {
+        setLocalVal(val); // Hiển thị số vừa gõ lên màn hình ngay lập tức
+
+        const numVal = Number(val || 0);
+        const maxCanSell = Number(record.shipment_data?.qty_cansell ?? 0);
+
+        // Nếu người dùng đang xóa trắng để gõ số mới, tạm dừng tính toán tiền để tránh lỗi NaN
+        if (val === null || val === undefined || numVal <= 0) return;
+
+        let finalQty = numVal;
+
+        // Chặn cứng nếu số lượng gõ vượt quá tồn kho khả dụng
+        if (finalQty > maxCanSell) {
+          message.warning(`Sản phẩm [${record.name_sp_c}] chỉ còn tối đa ${maxCanSell} sản phẩm khả dụng!`);
+          finalQty = maxCanSell;
+          setLocalVal(maxCanSell);
+        }
+
+        // Công thức toán học tính toán Thành tiền
+        const unitPrice = Number(record.price_c || 0);
+        const discount = Number(record.discount_sp_c || 0);
+        const discType = record.discount_type_sp_c || 'direct';
+
+        let total = unitPrice * finalQty;
+        if (discType === 'percent') {
+          total -= (total * discount) / 100;
+        } else {
+          total -= (discount * finalQty);
+        }
+        
+        const finalSubtotal = total >= 0 ? total : 0;
+
+        // 1. Đồng bộ lên Form chính của SuiteCRM để phục vụ lưu trữ vào Database
+        handleTableFieldChange(record.aos_products_id_c, 'qty_c', finalQty);
+        handleTableFieldChange(record.aos_products_id_c, 'subtotal_c', finalSubtotal);
+
+        // 2. Ép Table tạo bản sao mới để cột Tổng tiền nhảy số Real-time lập tức
+        setLineItems(prev => prev.map(item => {
+          if (item.aos_products_id_c !== record.aos_products_id_c) return item;
+          return {
+            ...item,
+            qty_c: finalQty,
+            subtotal_c: finalSubtotal
+          };
+        }));
+      }}
+      onBlur={() => {
+        // Phòng hờ rời ô khi đang trống, ép số lượng quay về tối thiểu = 1
+        if (localVal === null || localVal === undefined || Number(localVal) <= 0) {
+          setLocalVal(1);
+
+          const unitPrice = Number(record.price_c || 0);
+          const discount = Number(record.discount_sp_c || 0);
+          const discType = record.discount_type_sp_c || 'direct';
+          let total = unitPrice - (discType === 'percent' ? (unitPrice * discount) / 100 : discount);
+          const finalSubtotal = total >= 0 ? total : 0;
+
+          handleTableFieldChange(record.aos_products_id_c, 'qty_c', 1);
+          handleTableFieldChange(record.aos_products_id_c, 'subtotal_c', finalSubtotal);
+
+          setLineItems(prev => prev.map(item => {
+            if (item.aos_products_id_c !== record.aos_products_id_c) return item;
+            return { ...item, qty_c: 1, subtotal_c: finalSubtotal };
+          }));
+        }
+      }}
+    />
+  );
+};
+
+// =================================================================
+// 🏛️ COMPONENT CHÍNH LAYOUT LINE ITEMS SECTION
+// =================================================================
 export default function LineItemsSection({
   panel,               
   lineItems,
@@ -17,7 +109,8 @@ export default function LineItemsSection({
   handleRemoveLine,
   handleTableFieldChange,
   cleanSystemLabel,
-  pricePolicyData 
+  pricePolicyData,
+  warehouseId // 🏢 Nhận ID kho bãi từ Component cha truyền xuống
 }) {
   const [openShipmentModal, setOpenShipmentModal] = useState(false);
   const [selectedRecordId, setSelectedRecordId] = useState(null);
@@ -32,29 +125,40 @@ export default function LineItemsSection({
   const [activeShipments, setActiveShipments] = useState([]);
   const [openQuickSelectModal, setOpenQuickSelectModal] = useState(false);
 
+  const [isPromoOpen, setIsPromoOpen] = useState(false);
+  const [appliedPromos, setAppliedPromos] = useState([]);
   
+  const handleApplyPromos = (selectedPromos) => {
+      setAppliedPromos(selectedPromos);
+      setIsPromoOpen(false);
+      console.log("Danh sách CTKM được chọn sau cùng:", selectedPromos);
+  };
 
   const activePolicies = Array.isArray(pricePolicyData) ? pricePolicyData : [];
 
-  // =================================================================
-  // 🔥 CHÌA KHÓA: TỰ ĐỘNG LÀM SẠCH VÀ RE-FETCH ĐỂ KHÔI PHỤC GIÁ CŨ KHI ĐỔI KHÁCH
-  // =================================================================
+  // TỰ ĐỘNG RE-FETCH KHI ĐỔI KHÁCH HOẶC THAY ĐỔI KHO BÃI
   useEffect(() => {
-    // Mỗi khi mảng chính sách giá thay đổi (chọn khách mới hoặc bỏ chọn khách thành mảng rỗng)
-    // Tiến hành reset lại mảng phương án hiển thị cũ và ép nạp lại giá mới từ CRM
     setPage(1);
     setProductOptions([]);
-    fetchProducts(1, searchKeyword, false);
-  }, [pricePolicyData]); // 👀 Lắng nghe sự thay đổi của mảng chính sách giá
+    if (warehouseId && warehouseId !== '') {
+      fetchProducts(1, searchKeyword, false);
+    }
+  }, [pricePolicyData, warehouseId]);
 
-  // =================================================================
-  // ĐỘNG CƠ FETCH DATA SẢN PHẨM PHÂN TRANG ĐỘNG TỪ CRM LOCAL
-  // =================================================================
+  // ĐỘNG CƠ FETCH DATA SẢN PHẨM PHÂN TRANG THEO KHO BÃI CHỈ ĐỊNH
   const fetchProducts = async (currentPage, keyword, isLoadMore = false) => {
+    if (!warehouseId || warehouseId === '') {
+      setProductOptions([]);
+      return;
+    }
+
     if (fetchingProducts) return;
     setFetchingProducts(true);
+    
     try {
-      const apiUrl = `./index.php?entryPoint=get_products_search&module=AOS_Products&page=${currentPage}&limit=20&keyword=${encodeURIComponent(keyword)}`;
+      const encodedKw = encodeURIComponent(keyword);
+      const apiUrl = `./index.php?entryPoint=get_productsByIdWarehouse&module=AOS_Products&page=${currentPage}&limit=20&keyword=${encodedKw}&warehouse_id=${warehouseId}`;
+
       const response = await fetch(apiUrl, { method: 'GET' });
       const result = await response.json();
       
@@ -65,8 +169,6 @@ export default function LineItemsSection({
           const qtyCansell = firstShipment.qty_cansell ?? 0;
 
           const cleanSearchString = `${prod.name} ${prod.part_number || prod.sku || ''} ${prod.maincode || ''}`.trim();
-          
-          // Kiểm tra chính sách giá đặc thù cho Search
           const matchedPolicy = activePolicies.length > 0 
             ? activePolicies.find(p => p.product_id === prod.id) 
             : null;
@@ -106,7 +208,6 @@ export default function LineItemsSection({
                 </div>
 
                 <div style={{ textAlign: 'right', minWidth: '150px', lineHeight: '1.4' }}>
-                  {/* 🟢 Nếu có chính sách thì hiện giá mới gạch giá cũ, ngược lại mảng rỗng thì tự động lấy giá cũ gốc */}
                   {matchedPolicy ? (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
                       <span style={{ fontWeight: 600, color: '#ff4d4f', fontSize: 13 }}>
@@ -129,7 +230,7 @@ export default function LineItemsSection({
             ),
             
             product: {
-              id: prod.id, 
+              aos_products_id_c: prod.id, 
               name: prod.name,
               sku: prod.part_number || prod.sku || '',
               price: Number(prod.price || 0),
@@ -147,14 +248,14 @@ export default function LineItemsSection({
         if (!isLoadMore) setProductOptions([]);
       }
     } catch (error) {
-      console.error("Lỗi kết nối API phân trang baotram local:", error);
+      console.error("Lỗi kết nối API phân trang kho bãi:", error);
       if (!isLoadMore) setProductOptions([]);
     } finally {
       setFetchingProducts(false);
     }
   };
 
-  // Trình chống nhiễu gõ phím tìm kiếm giữ nguyên cơ chế
+  // Trình chống nhiễu gõ phím tìm kiếm
   useEffect(() => {
     if (searchKeyword.trim() === '') return; 
     const delayDebounceFn = setTimeout(() => {
@@ -163,7 +264,7 @@ export default function LineItemsSection({
     return () => clearTimeout(delayDebounceFn);
   }, [searchKeyword]);
 
-  // --- XỬ LÝ GOM NHÓM FIELDS THEO HÀNG ---
+  // --- XỬ LÝ GOM NHÓM FIELDS THEO HÀNG (LOẠI BỎ SỐ LƯỢNG VÀ THÀNH TIỀN TỰ ĐỘNG) ---
   const normalizeFieldName = (name = '') => {
     let cleanName = name.trim();
     if (cleanName.includes('discount')) return 'discount';
@@ -177,14 +278,18 @@ export default function LineItemsSection({
 
   const groupedFields = {};
   (panel?.fields || [])
-    .filter(field => cleanLineItemName(field.name) !== 'line_item_c')
+    .filter(field => {
+      const cleanName = cleanLineItemName(field.name);
+      // Loại bỏ 2 trường này khỏi Vardef động để tự can thiệp layout cố định độc lập
+      return cleanName !== 'line_item_c' && cleanName !== 'qty_c' && cleanName !== 'subtotal_c';
+    })
     .forEach(field => {
       const normalized = normalizeFieldName(field.name);
       if (!groupedFields[normalized]) groupedFields[normalized] = [];
       groupedFields[normalized].push(field);
     });
 
-  // --- KHỞI TẠO CẤU TRÚC COLUMNS ---
+  // --- KHỞI TẠO CẤU TRÚC COLUMNS TABLE ---
   const columns = useMemo(() => {
     return [
       {
@@ -237,7 +342,7 @@ export default function LineItemsSection({
                     style={{ padding: 0, height: 'auto', fontSize: 12 }}
                     disabled={!isEditable} 
                     onClick={() => {
-                      setSelectedRecordId(String(record.id));
+                      setSelectedRecordId(String(record.aos_products_id_c));
                       setActiveShipments( record._all_shipments || [] ); 
                       setShipmentKeyword('');
                       setOpenShipmentModal(true);
@@ -251,61 +356,87 @@ export default function LineItemsSection({
           };
         }
 
+        // 🌟 KHỐI LAYOUT CỐ ĐỊNH: SỐ LƯỢNG (REAL-TIME) | CHIẾT KHẤU | TỔNG TIỀN (REAL-TIME)
         if (fieldKey === 'discount') {
           const typeField = fields.find(f => f.type === 'enum') || {};
-          return {
-            title: <span className="table-header-bold">Chiết khấu</span>,
-            key: 'discount_group_column',
-            align: 'center',
-            ellipsis: true,
-            render: (_, record) => {
-              const type = record.discount_type_sp_c || 'direct';
-              const unitPrice = Number(record.origin_amount || 0);
-              const discountValue = Number(record.discount_sp_c || 0);
-              const isOverPercent = type === 'percent' && discountValue > 100;
-              const isOverMoney = type === 'direct' && discountValue > unitPrice;
-              const hasError = isOverPercent || isOverMoney;
-              const realDiscount = type === 'percent' ? (unitPrice * discountValue) / 100 : discountValue;
+          return [
+            {
+              title: <span className="table-header-bold">Số lượng</span>,
+              dataIndex: 'qty_c',
+              key: 'custom_qty_column_cell',
+              width: 85,
+              align: 'center',
+              render: (v, record) => (
+                // Truyền prop setLineItems sang component phụ để kích hoạt ép re-render Table nhảy tiền
+                <QtyInputCell record={record} handleTableFieldChange={handleTableFieldChange} setLineItems={setLineItems} />
+              )
+            },
+            {
+              title: <span className="table-header-bold">Chiết khấu</span>,
+              key: 'discount_group_column',
+              align: 'center',
+              ellipsis: true,
+              render: (_, record) => {
+                const type = record.discount_type_sp_c || 'direct';
+                const unitPrice = Number(record.origin_amount || 0);
+                const discountValue = Number(record.discount_sp_c || 0);
+                const isOverPercent = type === 'percent' && discountValue > 100;
+                const isOverMoney = type === 'direct' && discountValue > unitPrice;
+                const hasError = isOverPercent || isOverMoney;
+                const realDiscount = type === 'percent' ? (unitPrice * discountValue) / 100 : discountValue;
 
-              return (
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, width: '120px', margin: '0 auto' }}>
-                  <Select
-                    size="small"
-                    value={type}
-                    style={{ width: '100%' }}
-                    disabled={!isEditable}
-                    onChange={(newType) => handleTableFieldChange(record.id, 'discount_type_sp_c', newType)}
-                    options={(typeField.options || [
-                      { label: 'Chiết khấu tiền', value: 'direct' },
-                      { label: 'Chiết khấu %', value: 'percent' }
-                    ])}
-                  />
-                  <InputNumber
-                    size="small"
-                    status={hasError ? 'error' : ''}
-                    value={discountValue === 0 ? null : discountValue}
-                    min={0}
-                    disabled={!isEditable}
-                    style={{ width: '100%' }}
-                    placeholder={type === 'percent' ? 'Nhập %' : 'Nhập số tiền'}
-                    formatter={(val) => type === 'direct' ? `${val}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : val}
-                    parser={(val) => (val || '').replace(/,/g, '')}
-                    onChange={(val) => handleTableFieldChange(record.id, 'discount_sp_c', val)}
-                  />
-                  {hasError && (
-                    <span style={{ color: '#ff4d4f', fontSize: 11 }}>
-                      {isOverPercent ? 'Không vượt 100%' : 'Không vượt đơn giá'}
-                    </span>
-                  )}
-                  {!hasError && (
-                    <div style={{ fontSize: 10, color: '#999' }}>
-                      {type === 'percent' ? `~ ${realDiscount.toLocaleString()} đ` : `${unitPrice ? ((realDiscount / unitPrice) * 100).toFixed(1) : 0}%`}
-                    </div>
-                  )}
-                </div>
-              );
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, width: '120px', margin: '0 auto' }}>
+                    <Select
+                      size="small"
+                      value={type}
+                      style={{ width: '100%' }}
+                      disabled={!isEditable}
+                      onChange={(newType) => handleTableFieldChange(record.aos_products_id_c, 'discount_type_sp_c', newType)}
+                      options={(typeField.options || [
+                        { label: 'Chiết khấu tiền', value: 'direct' },
+                        { label: 'Chiết khấu %', value: 'percent' }
+                      ])}
+                    />
+                    <InputNumber
+                      size="small"
+                      status={hasError ? 'error' : ''}
+                      value={discountValue === 0 ? null : discountValue}
+                      min={0}
+                      disabled={!isEditable}
+                      style={{ width: '100%' }}
+                      placeholder={type === 'percent' ? 'Nhập %' : 'Nhập số tiền'}
+                      formatter={(val) => type === 'direct' ? `${val}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : val}
+                      parser={(val) => (val || '').replace(/,/g, '')}
+                      onChange={(val) => handleTableFieldChange(record.aos_products_id_c, 'discount_sp_c', val)}
+                    />
+                    {hasError && (
+                      <span style={{ color: '#ff4d4f', fontSize: 11 }}>
+                        {isOverPercent ? 'Không vượt 100%' : 'Không vượt đơn giá'}
+                      </span>
+                    )}
+                    {!hasError && (
+                      <div style={{ fontSize: 10, color: '#999' }}>
+                        {type === 'percent' ? `~ ${realDiscount.toLocaleString()} đ` : `${unitPrice ? ((realDiscount / unitPrice) * 100).toFixed(1) : 0}%`}
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+            },
+            // 🌟 CỘT TỔNG TIỀN (THÀNH TIỀN) ĐÃ ĐƯỢC KHÔI PHỤC VÀ ĐỒNG BỘ REAL-TIME
+            {
+              title: <span className="table-header-bold">Tổng tiền</span>,
+              dataIndex: 'subtotal_c',
+              key: 'custom_subtotal_column_cell',
+              width: 120,
+              align: 'right',
+              render: (v) => {
+                const num = Number(v || 0);
+                return <Text style={{ fontSize: 13, fontWeight: 600, color: '#111' }}>{num.toLocaleString()} đ</Text>;
+              }
             }
-          };
+          ];
         }
 
         return {
@@ -339,28 +470,25 @@ export default function LineItemsSection({
                     style={{ width: 'auto', minWidth: '110px', maxWidth: '140px' }}
                     placeholder="Chọn..."
                     value={v}
-                    onChange={(val) => handleTableFieldChange(record.id, fieldKey, val)}
+                    onChange={(val) => handleTableFieldChange(record.aos_products_id_c, fieldKey, val)}
                     options={(mainField.options || []).map(opt => ({ value: opt.value, label: opt.label }))}
                   />
                 );
               }
 
               if (mainField.type === 'currency' || mainField.type === 'int' || mainField.type === 'decimal') {
-                const isOriginalAmount = fieldKey === 'origin_amount';
-                const isQty = fieldKey.includes('qty');
-                const targetWidth = isQty ? '65px' : '100px';
-
+                const isOriginalAmount = fieldKey === 'subtotal_c' || fieldKey === 'origin_amount';
                 return (
                   <InputNumber
                     size="small"
-                    style={{ width: targetWidth, minWidth: targetWidth }}
+                    style={{ width: '100px', minWidth: '100px' }}
                     placeholder="0"
                     disabled={isOriginalAmount}
                     value={v}
                     min={0}
                     formatter={(val) => `${val}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
                     parser={(val) => val.replace(/,/g, '')}
-                    onChange={(val) => handleTableFieldChange(record.id, fieldKey, val)}
+                    onChange={(val) => handleTableFieldChange(record.aos_products_id_c, fieldKey, val)}
                   />
                 );
               }
@@ -371,7 +499,7 @@ export default function LineItemsSection({
                   style={{ width: 'auto', minWidth: '120px', maxWidth: '160px' }}
                   placeholder={cleanSystemLabel(mainField.label)}
                   value={v}
-                  onChange={(e) => handleTableFieldChange(record.id, fieldKey, e.target.value)}
+                  onChange={(e) => handleTableFieldChange(record.aos_products_id_c, fieldKey, e.target.value)}
                 />
               );
             }
@@ -383,7 +511,7 @@ export default function LineItemsSection({
             return <Text style={{ fontSize: 13 }}>{v || '-'}</Text>;
           }
         };
-      }),
+      }).flat(), 
       {
         title: '',
         key: 'action_delete_column',
@@ -404,34 +532,26 @@ export default function LineItemsSection({
     ];
   }, [groupedFields]);
 
-  // =================================================================
-  // 🔥 HANDLE SELECT PRODUCT (KIỂM TRA CHÍNH SÁCH KHI CHỌN)
-  // =================================================================
+  // HANDLE SELECT PRODUCT CHỌN TỪ DROPDOWN KHÁCH HÀNG
   const interceptedHandleSelectProduct = (productId, option) => {
     const selectedProduct = option.product || {};
-    
-    // Tìm xem sản phẩm có nằm trong chính sách giá đặc thù đang active không
     const matchedPolicy = activePolicies.length > 0 
       ? activePolicies.find(p => p.product_id === productId) 
       : null;
 
-    // 🟢 Áp giá: Nếu mảng rỗng hoặc ko khớp -> Lấy giá niêm yết cũ (selectedProduct.price) gốc rực rỡ
     const targetUnitPrice = matchedPolicy ? Number(matchedPolicy.custom_price) : Number(selectedProduct.price || 0);
 
     setLineItems(prev => {
-      const isExist = prev.some(item => item.id === productId);
+      const isExist = prev.some(item => item.aos_products_id_c === productId);
       
       if (isExist) {
-        let isOverStock = false;
-
         const updatedList = prev.map(item => {
-          if (item.id !== productId) return item;
+          if (item.aos_products_id_c !== productId) return item;
           
           const newQty = Number(item.qty_c || 0) + 1;
           const maxCanSell = Number(item.shipment_data?.qty_cansell ?? 0);
 
           if (newQty > maxCanSell) {
-            isOverStock = true;
             message.warning(`Sản phẩm [${item.name_sp_c}] - Lô [${item.shipment_data?.lot_name || 'Mặc định'}] chỉ còn tối đa ${maxCanSell} sản phẩm khả dụng!`);
             return item; 
           }
@@ -447,7 +567,7 @@ export default function LineItemsSection({
             ...item, 
             price_c: targetUnitPrice, 
             qty_c: newQty, 
-            origin_amount: total >= 0 ? total : 0 
+            subtotal_c: total >= 0 ? total : 0 
           };
         });
 
@@ -466,18 +586,17 @@ export default function LineItemsSection({
       return [
         ...prev,
         {
-          id: productId, 
+          aos_products_id_c: productId, 
           name_sp_c: selectedProduct.name || '',
-          product_image_c: selectedProduct.product_image || selectedProduct.image || '', 
+          product_image: selectedProduct.product_image || selectedProduct.image || '', 
           price_c: targetUnitPrice, 
-          _original_price_c: Number(selectedProduct.price || 0), 
           discount_sp_c: 0,
           discount_type_sp_c: 'direct', 
           qty_c: 1, 
           sgt_shipment_id_c: defaultShipment.id, 
           shipment_data: defaultShipment, 
           _all_shipments: selectedProduct.shipment_data || [], 
-          origin_amount: targetUnitPrice 
+          subtotal_c: targetUnitPrice 
         }
       ];
     });
@@ -494,7 +613,7 @@ export default function LineItemsSection({
         <div style={{ 
           marginBottom: 16, 
           width: '100%', 
-          display: 'flex',       
+          display: 'flex',      
           alignItems: 'center',  
           gap: '12px'            
         }}>
@@ -503,7 +622,8 @@ export default function LineItemsSection({
               showSearch
               style={{ width: '100%' }}
               size="large"
-              placeholder="🔍 Tìm theo tên, mã SKU, hoặc quét mã Barcode..."
+              placeholder={!warehouseId ? "⚠️ Vui lòng chọn Kho bãi ở form chính trước khi tìm sản phẩm..." : "🔍 Tìm theo tên, mã SKU, hoặc quét mã Barcode..."}
+              disabled={!warehouseId} 
               defaultActiveFirstOption={false}
               filterOption={false} 
               onSearch={(value) => {
@@ -512,7 +632,7 @@ export default function LineItemsSection({
                 setProductOptions([]); 
               }} 
               onOpenChange={(open) => {
-                if (open && productOptions.length === 0) {
+                if (open && productOptions.length === 0 && warehouseId) {
                   setPage(1);
                   setSearchKeyword('');
                   fetchProducts(1, '', false);
@@ -532,7 +652,16 @@ export default function LineItemsSection({
               optionLabelProp="searchValue" 
               value={null} 
               onChange={interceptedHandleSelectProduct}
-              notFoundContent={fetchingProducts ? <div style={{ textAlign: 'center', padding: '8px' }}><Spin size="small" /> Đang tra cứu tồn kho...</div> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Không tìm thấy mặt hàng nào khớp!" />}
+              notFoundContent={
+                fetchingProducts ? (
+                  <div style={{ textAlign: 'center', padding: '8px' }}><Spin size="small" /> Đang tra cứu tồn kho...</div>
+                ) : (
+                  <Empty 
+                    image={Empty.PRESENTED_IMAGE_SIMPLE} 
+                    description={!warehouseId ? "Vui lòng chọn Kho bãi trước!" : "Không tìm thấy mặt hàng nào khớp trong kho này!"} 
+                  />
+                )
+              }
               options={productOptions} 
             />
           </div>
@@ -562,7 +691,7 @@ export default function LineItemsSection({
         </div>
 
         <Table
-          rowKey="id"
+          rowKey="aos_products_id_c"
           pagination={false}
           dataSource={lineItems}
           scroll={{ x: 'max-content' }}
@@ -575,8 +704,20 @@ export default function LineItemsSection({
             lineItems={lineItems}
             formData={formData}
             handleFormChange={handleFormChange}
+            isPromoOpen={isPromoOpen}
+            setIsPromoOpen={setIsPromoOpen}
+            appliedPromos={appliedPromos}
+            handleApplyPromos={handleApplyPromos}
           />
         ) : null}
+
+        <PromoModal
+          isOpen={isPromoOpen}
+          onClose={() => setIsPromoOpen(false)}
+          onApply={handleApplyPromos}
+          lineItems={lineItems}
+          formData={formData}
+        />
 
         {/* MODAL CHỌN LÔ HÀNG ĐỘNG */}
         <Modal
@@ -624,7 +765,7 @@ export default function LineItemsSection({
                     style={{ backgroundColor: '#0088FF', borderColor: '#0088FF', fontWeight: 500 }}
                     onClick={() => {
                       const updatedLines = lineItems.map(item => {
-                        if (String(item.id) === String(selectedRecordId)) {
+                        if (String(item.aos_products_id_c) === String(selectedRecordId)) {
                           return { 
                             ...item, 
                             sgt_shipment_id_c: shipment.id, 

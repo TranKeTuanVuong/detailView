@@ -3,7 +3,7 @@ import { Card, Row, Col, Typography } from 'antd';
 
 const { Text } = Typography;
 
-export default function FormTabs({ allTabs, formData, handleFormChange, cleanSystemLabel, RenderField }) {
+export default function FormTabs({ allTabs, formData, handleFormChange, cleanSystemLabel, RenderField,setWarehouseId , moduleName, setPromoType, setPromoMethod }) {
   if (!allTabs || allTabs.length === 0) return null;
 
   return (
@@ -18,8 +18,8 @@ export default function FormTabs({ allTabs, formData, handleFormChange, cleanSys
     >
       {/* 🔥 VÒNG LẶP: Mỗi phần tử Tab trong mảng allTabs sẽ được render thành 1 Card riêng biệt */}
       {allTabs.map((tab) => {
-        // Định dạng lại tiêu đề hiển thị: Nếu là key 'default' thì đổi thành 'Thông tin đơn hàng', ngược lại dùng label hệ thống
-        const cardTitle = tab.key === 'default' ? 'Thông tin đơn hàng' : cleanSystemLabel(tab.label);
+        // Định format lại tiêu đề hiển thị: Nếu là key 'default' thì đổi thành 'Thông tin chung', ngược lại dùng label hệ thống
+        const cardTitle = tab.label === 'default' ? `Thông tin ${moduleName}` : cleanSystemLabel(tab.label);
 
         return (
           <Card
@@ -65,7 +65,16 @@ export default function FormTabs({ allTabs, formData, handleFormChange, cleanSys
                         <RenderField
                           field={field}
                           value={formData[field.name]}
-                          onChange={(newVal) => handleFormChange(field.name, newVal)}
+                          onChange={(newVal) => {
+                            handleFormChange(field.name, newVal);
+                            if (field.name === 'warehouse_src_c') {
+                              setWarehouseId(newVal.id || null); // Cập nhật warehouseId khi trường kho hàng thay đổi
+                            } else if (field.name === 'promo_type') {
+                              setPromoType(newVal || null);
+                            } else if (field.name === 'methods') {
+                              setPromoMethod(newVal || null);
+                            }
+                          }}
                         />
                       </div>
                     </div>

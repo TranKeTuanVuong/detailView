@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Row, Col, Typography, Input, Select, DatePicker, Checkbox, InputNumber, Button, Spin, message } from 'antd';
 import dayjs from 'dayjs';
 
@@ -11,6 +11,7 @@ import FormPanelsSearch from '../components/FormPanelsSearch';
 import FormTabs from '../components/FormTabs';
 import LineItemsSection from '../components/LineItemsSection';
 import PricePolicySection from '../components/PricePolicySection';
+import UniversalLineItemSection from '../components/UniversalLineItemSection';
 
 // Import CSS
 import './css/EditView.css';
@@ -37,7 +38,7 @@ const cleanSystemLabel = (label) => {
 };
 
 /* ================= COMPONENT ĐIỀU PHỐI FIELD RENDERER DYNAMIC ================= */
-const RenderField = ({ field, value, onChange }) => {
+const RenderField = ({ field, value, onChange, formData: localFormData }) => {
   const labelText = cleanSystemLabel(field.label);
   const isReadOnly = field.readonly === true || field.readonly === 1;
 
@@ -47,36 +48,114 @@ const RenderField = ({ field, value, onChange }) => {
     value: (value !== undefined && value !== null) ? value : '' 
   };
 
+  // =================================================================
+  // 🔮 ĐỘNG CƠ TỰ ĐỘNG CHỌN GIÁ TRỊ ĐẦU TIÊN CHO DYNAMICENUM (ĐÃ TỐI ƯU)
+  // =================================================================
+  const parentFieldName = field.type === 'dynamicenum' ? field.parentenum : null;
+  
+  // Kiểm tra localFormData từ prop trước, nếu trống dự phòng lấy từ cầu nối toàn cục window chống mất dữ liệu
+  const targetFormData = (localFormData && Object.keys(localFormData).length > 0) ? localFormData : (window.__form_data_bridge || {});
+  
+  const parentValue = parentFieldName && targetFormData?.[parentFieldName] 
+    ? String(targetFormData[parentFieldName]).trim() 
+    : '';
+
+  useEffect(() => {
+    if (field.type === 'dynamicenum' && parentValue !== '') {
+      
+      // Lọc danh sách cấp con chính xác tuyệt đối bằng dấu gạch dưới `_`
+      const validChildOptions = (field.options || []).filter(opt => 
+        opt.value && String(opt.value).startsWith(`${parentValue}_`)
+      );
+
+      // Kiểm tra xem giá trị con hiện tại trên UI có khớp với danh sách con hợp lệ của cha không
+      const isCurrentValueInvalid = !value || !validChildOptions.some(opt => String(opt.value) === String(value));
+
+      if (validChildOptions.length > 0 && isCurrentValueInvalid) {
+        const firstValidValue = validChildOptions[0].value;
+        
+        // Hoãn lệnh gán qua setTimeout để đưa tiến trình ra sau luồng render chính của React, loại bỏ lỗi UI bị đơ
+        const timer = setTimeout(() => {
+          onChange(firstValidValue);
+        }, 0);
+        
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [parentValue, field.type, value]); 
+
   switch (field.type) {
     case 'varchar':
     case 'name':
     case 'phone':
     case 'iframe':
       return <Input placeholder={labelText} {...commonProps} onChange={(e) => onChange(e.target.value)} />;
+    
     case 'relate':
     case 'flex_relate':
       return <RelateModelSelect field={field} placeholder={field.related_module_label || labelText} disabled={isReadOnly} value={value || null} onChange={onChange} />;
+    
     case 'text':
     case 'address':
     case 'html':
       return <TextArea rows={2} placeholder={labelText} {...commonProps} onChange={(e) => onChange(e.target.value)} />;
+    
     case 'enum':
-    case 'dynamicenum':
-      return <Select {...commonProps} value={value !== undefined && value !== null ? value : undefined} placeholder={`Chọn ${labelText}`} onChange={(val) => onChange(val)} options={(field.options || []).map((i) => ({ value: i.value, label: i.label }))} />;
+      return (
+        <Select 
+          {...commonProps} 
+          value={value !== undefined && value !== null && value !== '' ? value : undefined} 
+          placeholder={`Chọn ${labelText}`} 
+          onChange={(val) => onChange(val)} 
+          options={(field.options || [])
+            .filter(opt => opt.value !== '' && opt.label !== '')
+            .map((i) => ({ value: i.value, label: i.label }))
+          } 
+        />
+      );
+
+    // =================================================================
+    // 🟢 TÁCH BIỆT XỬ LÝ DYNAMICENUM: ĐỒNG BỘ ĐIỀU KIỆN LỌC PHỤ THUỘC CHÍNH XÁC
+    // =================================================================
+    case 'dynamicenum': {
+      const filteredOptions = (field.options || []).filter(opt => {
+        if (!parentValue) return false;
+        return String(opt.value).startsWith(`${parentValue}_`);
+      });
+
+      const hasParent = parentValue !== '';
+
+      return (
+        <Select 
+          {...commonProps} 
+          value={(value !== undefined && value !== null && value !== '') ? value : undefined} 
+          placeholder={!hasParent ? `⚠️ Vui lòng chọn trường cha trước...` : `Chọn ${labelText}`} 
+          disabled={isReadOnly || !hasParent}
+          onChange={(val) => onChange(val)} 
+          options={filteredOptions.map((i) => ({ value: i.value, label: i.label }))} 
+        />
+      );
+    }
+
     case 'multienum':
       return <Select {...commonProps} value={Array.isArray(value) ? value : []} mode="multiple" placeholder={`Chọn nhiều ${labelText}`} onChange={(vals) => onChange(vals)} options={(field.options || []).map((i) => ({ value: i.value, label: i.label }))} />;
+    
     case 'date':
       return <DatePicker {...commonProps} value={value ? dayjs(value, 'YYYY-MM-DD') : null} format="DD/MM/YYYY" placeholder="Chọn ngày" onChange={(date) => onChange(date ? date.format('YYYY-MM-DD') : '')} />;
+    
     case 'datetime':
     case 'datetimecombo':
       return <DatePicker {...commonProps} value={value ? dayjs(value, 'YYYY-MM-DD HH:mm:ss') : null} showTime format="DD/MM/YYYY HH:mm" placeholder="Chọn ngày giờ" onChange={(date) => onChange(date ? date.format('YYYY-MM-DD HH:mm:ss') : '')} />;
+    
     case 'currency':
     case 'decimal':
     case 'float':
     case 'int':
       return <InputNumber {...commonProps} value={value !== undefined && value !== null ? value : null} min={0} precision={field.type === 'int' ? 0 : undefined} formatter={(v) => field.type === 'currency' ? `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : v} parser={(v) => v.replace(/,/g, '')} onChange={(val) => onChange(val)} />;
+    
     case 'bool':
       return <Checkbox {...commonProps} checked={value === 1 || value === true || value === '1'} onChange={(e) => onChange(e.target.checked ? 1 : 0)}>{labelText}</Checkbox>;
+    
     default:
       return <Input placeholder={labelText} {...commonProps} onChange={(e) => onChange(e.target.value)} />;
   }
@@ -90,16 +169,25 @@ export default function EditView({ recordId }) {
     loading,
     module,
     setModule,
-    handleLayOut,handleSave
+    handleLayOut,
+    handleSave
   } = DetailApi();
 
   // 1. STATE QUẢN LÝ DỮ LIỆU ĐỘNG TỔNG THỂ
   const [formData, setFormData] = useState({});
   const [panelsData, setPanelsData] = useState({});
 
-  // Cầu nối cô lập cho module chi tiết đơn hàng (sgt_orderdetail)
+  // 🟢 KÍCH HOẠT CẦU NỐI: Liên tục đẩy dữ liệu mới nhất lên bộ nhớ window phục vụ RenderField
+  window.__form_data_bridge = formData;
+
+  // Cầu nối tổng quản lý chính sách giá từ trang chính EditView
   const lineItems = panelsData['sgt_orderdetail'] || [];
   const [pricePolicyData, setPricePolicyData] = useState([]);
+  const [warehouseId, setWarehouseId] = useState(null); 
+
+  const [promoType, setPromoType] = useState(null); 
+  const [promoMethod, setPromoMethod] = useState(null); 
+
   const setLineItems = (newDataOrFn) => {
     handlePanelDataChange('sgt_orderdetail', newDataOrFn);
   };
@@ -119,16 +207,12 @@ export default function EditView({ recordId }) {
     setFormData(prev => ({ ...prev, [fieldName]: value }));
   };
 
-  // =================================================================
-  // ĐÃ SỬA: HÀM CẬP NHẬT PANEL ĐỘNG AN TOÀN TUYỆT ĐỐI (TRÁNH TRÔI/MẤT CHỮ)
-  // =================================================================
   const handlePanelDataChange = (moduleKey, dataOrFn) => {
     setPanelsData(prev => {
       const currentPanelData = prev[moduleKey] || [];
       const updatedPanelData = typeof dataOrFn === 'function' 
         ? dataOrFn(currentPanelData) 
         : dataOrFn;
-
       return {
         ...prev,
         [moduleKey]: updatedPanelData
@@ -137,56 +221,175 @@ export default function EditView({ recordId }) {
   };
 
   // =================================================================
+  // 🔥 LUỒNG TỰ ĐỘNG CẬP NHẬT GIÁ KHI CHÍNH SÁCH THAY ĐỔI
+  // =================================================================
+  useEffect(() => {
+    if (lineItems.length === 0) return;
+    
+    setLineItems(prev => prev.map(item => {
+      const matchedPolicy = pricePolicyData.length > 0 
+        ? pricePolicyData.find(p => p.product_id === item.aos_products_id_c) 
+        : null;
+
+      const targetPrice = matchedPolicy 
+        ? Number(matchedPolicy.custom_price) 
+        : Number(item.subtotal_c || item.price_c || 0);
+
+      const qty = Number(item.qty_c || 0);
+      const discount = Number(item.discount_sp_c || 0);
+      const discType = item.discount_type_sp_c || 'direct';
+
+      let total = targetPrice * qty;
+      if (discType === 'percent') total -= (total * discount / 100);
+      else total -= (discount * qty);
+
+      return {
+        ...item,
+        price_c: targetPrice,
+        _original_price_c: item._original_price_c || item.price_c, 
+        subtotal_c: total >= 0 ? total : 0
+      };
+    }));
+  }, [pricePolicyData]); 
+
+  // =================================================================
   // ĐỘNG CƠ GOM CỤM ĐỘNG VÀ LƯU DỮ LIỆU TỔNG QUÁT LÊN APIS PHP
   // =================================================================
- const handleSaveForm = async () => {
-  const formattedFormData = { ...formData };
-  const activePanelsAndTabs = [...(layout?.panels || []), ...(layout?.tabs || [])];
-  
-  // Chuẩn hóa cấu trúc các trường Relate của ô nhập form chính
-  activePanelsAndTabs.forEach(section => {
-    (section.fields || []).forEach(field => {
-      if ((field.type === 'relate' || field.type === 'flex_relate') && formattedFormData[field.name]) {
-        const relateObj = formattedFormData[field.name];
-        if (typeof relateObj === 'object') {
-          const idFieldName = field.related_id_field || `${field.name}_id`;
-          formattedFormData[idFieldName] = relateObj.id; 
-          formattedFormData[field.name] = relateObj.name;       
+  function cleanUniversalFieldName(fieldName) {
+    if (!fieldName || typeof fieldName !== 'string') return '';
+    const pattern = /^(.+)_(?!id)[a-zA-Z0-9]+(_c)$/i;
+    return fieldName.replace(pattern, '$1$2');
+  }
+
+  const handleSaveForm = async () => {
+    // 1. CHUẨN HÓA DỮ LIỆU FORM CHÍNH (Giữ nguyên logic cũ của bạn)
+    const formattedFormData = { ...formData };
+    const activePanelsAndTabs = [...(layout?.panels || []), ...(layout?.tabs || [])];
+    activePanelsAndTabs.forEach(section => {
+      (section.fields || []).forEach(field => {
+        if ((field.type === 'relate' || field.type === 'flex_relate') && formattedFormData[field.name]) {
+          const relateObj = formattedFormData[field.name];
+          if (typeof relateObj === 'object') {
+            const idFieldName = field.related_id_field || `${field.name}_id`;
+            formattedFormData[idFieldName] = relateObj.id; 
+            formattedFormData[field.name] = relateObj.name;       
+          }
         }
-      }
+      });
     });
-  });
 
-  // Gom dữ liệu các bảng con ngẫu nhiên bám sát theo Metadata Layout đang có
-  const dynamicLineItemsData = {};
-  (layout?.line_items_panels || []).forEach(panel => {
-    const moduleKey = panel.line_item_source_module;
-    const rawRows = panelsData[moduleKey] || [];
+    // 2. 🔥 XỬ LÝ DỮ LIỆU BẢNG CON ĐỘNG
+    const dynamicLineItemsData = {};
+    
+    (layout?.line_items_panels || []).forEach(panel => {
+      const moduleKey = panel.line_item_source_module;
+      const rawRows = panelsData[moduleKey] || []; // Mảng chứa dữ liệu dạng lồng tiers
 
-    // 🔥 TIẾN HÀNH THANH LỌC DỮ LIỆU BẢNG CON TẠI ĐÂY
-    dynamicLineItemsData[moduleKey] = rawRows.map(item => {
-      // Bóc tách _all_shipments và shipment_data ra ngoài, gom tất cả trường còn lại vào 'cleanItem'
-      const { _all_shipments, shipment_data, ...cleanItem } = item;
-      
-      return cleanItem; // Trả về object sạch chỉ chứa các trường cần lưu xuống Database
+      // Tạo một mảng chứa kết quả phẳng hóa cuối cùng cho module này
+      const flattenedModuleRows = [];
+
+      rawRows.forEach(groupItem => {
+        // Kiểm tra xem dòng này có chứa mảng tiers con và có phải là module số lượng bậc thang không
+        if (moduleKey === 'sgt_discount_qty' && Array.isArray(groupItem.tiers) && groupItem.tiers.length > 0) {
+          
+          // 🔁 CHẠY VÒNG LẶP ĐỂ GIẢI NÉN TỪNG TIER THÀNH 1 DÒNG ĐỘC LẬP
+          groupItem.tiers.forEach(tier => {
+            const cleanItem = {};
+
+            // Bước A: Copy toàn bộ thuộc tính định danh từ Group cha sang dòng phẳng mới
+            Object.keys(groupItem).forEach(key => {
+              // Bỏ qua các key hệ thống tạm và mảng tiers lồng nhau để tránh dôi dư dữ liệu
+              if (key !== 'tiers' && key !== 'id' && !key.startsWith('tableRowKey')) {
+                const cleanKey = typeof cleanUniversalFieldName === 'function' ? cleanUniversalFieldName(key) : key;
+                cleanItem[cleanKey] = groupItem[key];
+              }
+            });
+
+            // Bước B: Đè các thông số bậc thang tĩnh của TIER này vào các cột tương ứng
+            // Đồng bộ tên trường: Map từ 'from_qty'/'to_qty' của tier sang đúng tên cột 'qty_from'/'qty_to' trong DB JSON của bạn
+            cleanItem['qty_from'] = tier.from_qty;
+            cleanItem['qty_to'] = tier.to_qty;
+            cleanItem['discount'] = tier.discount;
+            cleanItem['discount_type'] = tier.discount_type;
+
+            // Bước C: Chuẩn hóa các Object trường liên kết Relate ({id, name} -> tách ra string & _id_c)
+            (panel.fields || []).forEach(field => {
+              if (field.type === 'relate' && cleanItem[field.name]) {
+                const relateVal = cleanItem[field.name];
+                if (typeof relateVal === 'object') {
+                  const idFieldName = field.related_id_field || `${field.name}_id`;
+                  cleanItem[idFieldName] = relateVal.id;
+                  cleanItem[field.name] = relateVal.name;
+                }
+              }
+            });
+
+            // Bước D: Tiến hành dọn dẹp các trường rác dôi dư hệ thống nếu có
+            const { _all_shipments, shipment_data, _original_price_c, ...finalCleanRow } = cleanItem;
+
+            // Đẩy bản ghi phẳng hoàn chỉnh vào mảng tổng (Mỗi tier giữ ID con độc lập nếu có, nếu là tier_ tạm của React thì truyền rỗng để tạo mới)
+            flattenedModuleRows.push({
+              id: tier.id && !String(tier.id).startsWith('tier_') ? tier.id : '',
+              ...finalCleanRow
+            });
+          });
+
+        } else {
+          // 🔵 ĐỐI VỚI CÁC MODULE THƯỜNG (KHÔNG CÓ TIERS): Giữ nguyên logic map phẳng 1 dòng như cũ của bạn
+          const cleanItem = {};
+          
+          Object.keys(groupItem).forEach(key => {
+            if (key === 'qty_c') cleanItem['qty'] = groupItem[key];
+            else if (key === 'price_c') cleanItem['price'] = groupItem[key];
+            else if (key === 'discount_sp_c') cleanItem['discount'] = groupItem[key];
+            else if (key === 'discount_type_sp_c') cleanItem['discount_type'] = groupItem[key];
+            else if (key === 'subtotal_c') cleanItem['subtotal'] = groupItem[key];
+            else {
+              const cleanKey = typeof cleanUniversalFieldName === 'function' ? cleanUniversalFieldName(key) : key;
+              cleanItem[cleanKey] = groupItem[key];
+            }
+          });
+
+          (panel.fields || []).forEach(field => {
+            if (field.type === 'relate' && cleanItem[field.name]) {
+              const relateVal = cleanItem[field.name];
+              if (typeof relateVal === 'object') {
+                const idFieldName = field.related_id_field || `${field.name}_id`;
+                cleanItem[idFieldName] = relateVal.id;
+                cleanItem[field.name] = relateVal.name;
+              }
+            }
+          });
+
+          const { _all_shipments, shipment_data, _original_price_c, ...finalCleanRow } = cleanItem;
+          
+          flattenedModuleRows.push({
+            id: groupItem.id && !String(groupItem.id).startsWith('row_') ? groupItem.id : '',
+            ...finalCleanRow
+          });
+        }
+      });
+
+      // Gán mảng đã giải nén phẳng hoàn chỉnh vào payload gửi đi
+      dynamicLineItemsData[moduleKey] = flattenedModuleRows;
     });
-  });
 
-  const finalPayload = {
-    parent_module: layout?.module,
-    parent_id: formattedFormData?.id || recordId || '', 
-    parent_fields: formattedFormData,
-    line_items_data: dynamicLineItemsData 
+    // 3. ĐÓNG GÓI PAYLOAD CUỐI CÙNG GỬI LÊN SERVER
+    const finalPayload = {
+      parent_module: layout?.module,
+      parent_id: formattedFormData?.id || recordId || '', 
+      parent_fields: formattedFormData,
+      line_items_data: dynamicLineItemsData 
+    };
+
+    console.log("🚀 [FINAL PAYLOAD PHẲNG HOÀN TOÀN ĐÃ GIẢI NÉN TIERS]:", finalPayload);
+    // await handleSave(finalPayload);
   };
 
-  console.log("🚀 [FINAL PAYLOAD ĐÃ ĐƯỢC LỌC SẠCH]:", finalPayload);
-  
-  // Kích hoạt hàm gọi API lưu chính thức
-  // await handleSave(finalPayload);
-};
   if (loading || !layout) {
     return (
       <div style={{ height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+        {/* 🟢 ĐÃ ĐỔI: Thay thế tip bằng description theo chuẩn AntD mới */}
         <Spin size="large" description="Đang tải cấu hình giao diện..." />
       </div>
     );
@@ -197,48 +400,43 @@ export default function EditView({ recordId }) {
   const lineItemsPanels = layout.line_items_panels || [];
   const hasTabs = allTabs.length > 0;
 
-
   const handleRemoveLine = (index) => {
     setLineItems(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleTableFieldChange = (id, fieldName, value) => {
-  setLineItems(prev => prev.map(item => {
-    if (item.id !== id) return item;
+    setLineItems(prev => prev.map(item => {
+      if (item.id !== id) return item;
 
-    // 🔥 1. CHẶN KIỂM TRA TỒN KHO KHI THAY ĐỔI SỐ LƯỢNG (qty_c)
-    if (fieldName === 'qty_c') {
-      const inputQty = Number(value || 0);
-      // Bốc số lượng có thể xuất bán tối đa của lô hàng đang chọn tại dòng này
-      const maxCanSell = Number(item.shipment_data?.qty_cansell ?? 0);
+      if (fieldName === 'qty_c') {
+        const inputQty = Number(value || 0);
+        const maxCanSell = Number(item.shipment_data?.qty_cansell ?? 0);
 
-      if (inputQty > maxCanSell) {
-        // Bắn thông báo đẩy cảnh báo người dùng ngoài giao diện
-        message.warning(
-          `Sản phẩm [${item.name_sp_c || 'Mặt hàng'}] - Lô [${item.shipment_data?.lot_name || 'Mặc định'}] chỉ còn tối đa ${maxCanSell} sản phẩm khả dụng!`
-        );
-        return item; // 🔴 CHẶN ĐỨNG: Trả về trạng thái item cũ, không cập nhật số lượng quá tải
+        if (maxCanSell > 0 && inputQty > maxCanSell) {
+          message.warning(
+            `Sản phẩm [${item.name_sp_c || 'Mặt hàng'}] - Lô [${item.shipment_data?.lot_name || 'Mặc định'}] chỉ còn tối đa ${maxCanSell} sản phẩm khả dụng!`
+          );
+          return item; 
+        }
       }
-    }
 
-    // 2. Nếu vượt qua bộ lọc hoặc thay đổi các trường khác (đơn giá, chiết khấu...), tiến hành tính toán lại tổng tiền
-    const updatedItem = { ...item, [fieldName]: value };
-    const qty = Number(updatedItem.qty_c || 0);
-    const price = Number(updatedItem.price_c || 0);
-    const discount = Number(updatedItem.discount_sp_c || 0);
-    const discType = updatedItem.discount_type_sp_c || 'direct';
+      const updatedItem = { ...item, [fieldName]: value };
+      const qty = Number(updatedItem.qty_c || 0);
+      const price = Number(updatedItem.price_c || 0);
+      const discount = Number(updatedItem.discount_sp_c || 0);
+      const discType = updatedItem.discount_type_sp_c || 'direct';
 
-    let total = price * qty;
-    if (discType === 'percent') {
-      total -= (total * discount / 100);
-    } else {
-      total -= (discount * qty);
-    }
-    
-    updatedItem.origin_amount = total >= 0 ? total : 0;
-    return updatedItem;
-  }));
-};
+      let total = price * qty;
+      if (discType === 'percent') {
+        total -= (total * discount / 100);
+      } else {
+        total -= (discount * qty);
+      }
+      
+      updatedItem.origin_amount = total >= 0 ? total : 0;
+      return updatedItem;
+    }));
+  };
 
   return (
     <div className="page" style={{ minHeight: '100vh', paddingBottom: '32px' }}>
@@ -284,8 +482,7 @@ export default function EditView({ recordId }) {
               handleFormChange={handleFormChange}
               cleanSystemLabel={cleanSystemLabel}
               RenderField={RenderField}
-              
-              setPricePolicyData={setPricePolicyData}
+              setPricePolicyData={setPricePolicyData} 
             />
           ) : (
             <FormPanels 
@@ -306,45 +503,89 @@ export default function EditView({ recordId }) {
               handleFormChange={handleFormChange}
               cleanSystemLabel={cleanSystemLabel}
               RenderField={RenderField}
+              setWarehouseId={setWarehouseId} 
+              moduleName={layout.module_label || layout.module} 
+              setPromoType={setPromoType} 
+              setPromoMethod={setPromoMethod} 
             />
           </Col>
         )}
       </Row>
 
-      {/* ================= ĐOẠN ĐIỀU PHỐI SECTION BẢNG CON ĐỘNG 100% NGẪU NHIÊN ================= */}
-      {lineItemsPanels.map((panel, index) => {
-        const moduleKey = panel.line_item_source_module;
+     {/* SECTION BẢNG CON ĐỘNG */}
+      {layout.module === 'sgt_sale_offs' ? (
+        // 🟢 LUỒNG 1: Dành riêng cho module Khuyến mãi (sgt_sale_offs)
+        (lineItemsPanels || []).map((panel, index) => {
+          const moduleKey = panel.line_item_source_module;
+          
+          // 1. Móc toàn bộ các giá trị đang cấu hình từ Form chính để làm điều kiện lọc
+          const selectedPromoType = formData?.promo_type;      // Ô Loại khuyến mãi (discount / free_gifts)
+          const selectedMethod    = formData?.methods;         // Ô Phương thức khuyến mãi
+          const selectedProdType  = formData?.promo_prod_type; // Ô Loại sản phẩm áp dụng
 
-        // KIỂU 1: Bảng chi tiết đơn hàng sản phẩm thường (Cần UI bốc tách xử lý tính toán tiền)
-        if (moduleKey === 'sgt_orderdetail') {
+          // 2. Kiểm tra ẩn/hiện nguyên bảng Sub-grid theo phương thức khuyến mãi
+          const isMatched = 
+            (selectedMethod === 'discount_total_order' && moduleKey === 'sgt_disc_order') ||
+            (selectedMethod === 'discount_by_product' && moduleKey === 'sgt_disc_product') ||
+            (selectedMethod === 'discount_qty_product' && moduleKey === 'sgt_discount_qty') ||
+            (selectedMethod === 'free_gifts_by_product' && moduleKey === 'sgt_gifts_by_product') ||
+            (selectedMethod === 'free_gifts_total_order' && moduleKey === 'sgt_gifts_order');
+
+          if (!isMatched) return null;
+
           return (
-            <LineItemsSection 
+            <UniversalLineItemSection
               key={moduleKey || index}
-              panel={panel}
-              lineItems={lineItems}
-              setLineItems={setLineItems}
-              formData={formData}                  
-              handleFormChange={handleFormChange}  
-              pricePolicyData={pricePolicyData}
-              handleRemoveLine={handleRemoveLine}
-              handleTableFieldChange={handleTableFieldChange}
-              cleanSystemLabel={cleanSystemLabel}
+              name={'Thêm điều kiện'}
+              // 🔥 QUAN TRỌNG: Truyền nguyên bản panel.fields gốc từ API layout sang
+              // Điều này giúp hàm khởi tạo dòng mới ở file con nhận đủ key, không bị mất/rỗng data khi gửi lên CRM
+              fields={panel.fields || []} 
+              lineItemLabel={panel.line_item_source_module_label}
+              dataSource={panelsData[moduleKey] || []} 
+              setDataSource={(newData) => handlePanelDataChange(moduleKey, newData)} 
+              isLayoutLoading={false}
+              promoType={selectedPromoType}
+              promoProdType={selectedProdType}
+              selectedMethod={selectedMethod} // 🟢 Truyền thêm prop này để con lọc ẩn cột order_value
+              isDiscountQty={moduleKey === 'sgt_discount_qty'} 
             />
           );
-        } 
-        
-        // KIỂU 2: TOÀN BỘ CÁC BẢNG CON NGẪU NHIÊN CÒN LẠI TRÊN ĐỜI (Tự sinh cột theo mảng fields)
-        return (
-          <PricePolicySection
-            key={moduleKey || index}
-            fields={panel.fields}
-            lineItemLabel={panel.line_item_source_module_label}
-            pricePolicies={panelsData[moduleKey] || []} 
-            setPricePolicies={(newData) => handlePanelDataChange(moduleKey, newData)} 
-            isLayoutLoading={false} // Chuyển hẳn thành false vì không còn luồng fetch dữ liệu cũ cản địa
-          />
-        );
-      })}
+        })
+      ) : (
+        // 🔵 LUỒNG 2: Dành cho các module khác (Giữ nguyên vẹn)
+        (lineItemsPanels || []).map((panel, index) => {
+          const moduleKey = panel.line_item_source_module;
+
+          if (moduleKey === 'sgt_orderdetail') {
+            return (
+              <LineItemsSection 
+                key={moduleKey || index}
+                panel={panel}
+                lineItems={lineItems}
+                setLineItems={setLineItems}
+                formData={formData}                  
+                handleFormChange={handleFormChange}  
+                pricePolicyData={pricePolicyData}
+                handleRemoveLine={handleRemoveLine}
+                handleTableFieldChange={handleTableFieldChange}
+                cleanSystemLabel={cleanSystemLabel}
+                warehouseId={warehouseId}
+              />
+            );
+          } else {
+            return (
+              <PricePolicySection
+                key={moduleKey || index}
+                fields={panel.fields}
+                lineItemLabel={panel.line_item_source_module_label}
+                pricePolicies={panelsData[moduleKey] || []} 
+                setPricePolicies={(newData) => handlePanelDataChange(moduleKey, newData)} 
+                isLayoutLoading={false} 
+              />
+            );
+          }
+        })
+      )}
     </div>
   );
 }
