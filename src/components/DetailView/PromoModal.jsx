@@ -7,7 +7,7 @@ import {
   ArrowLeftOutlined,
   GiftOutlined,
   PercentageOutlined
-} from '@ant-design/icons'; // Bạn có thể đổi lại thành @ant-design/icons tùy theo alias dự án
+} from '@ant-design/icons';
 
 const { Text } = Typography;
 
@@ -202,7 +202,7 @@ export default function PromoModal({
 
   /**
    * ====================================================================
-   * 🔥 ĐỘNG CƠ ÁP DỤNG: ĐẨY QUÀ VÀO GIỎ HÀNG CHÍNH
+   * 🔥 ĐỘNG CƠ ÁP DỤNG: ĐẨY QUÀ VÀO GIỎ HÀNG CHÍNH (GIÁ = 0đ & TẠO KEY ĐA NĂNG)
    * ====================================================================
    */
   const handleApply = () => {
@@ -216,16 +216,17 @@ export default function PromoModal({
           
           if (giftQty > 0) {
             newGiftsToInject.push({
+              // 🟢 CHÌA KHÓA: Tạo key tổng hợp độc lập bảo vệ AntD Table không nuốt dòng khi trùng mặt hàng mua
               tableRowKey: `${gift.product_id}_gift`, 
               aos_products_id_c: gift.product_id,
               name_sp_c: `(Quà tặng) ${gift.product_name}`, 
               product_image: gift.product_image || "",
-              price_c: 0,            
-              discount_sp_c: 0,      
+              price_c: 0,            // Đơn giá quà tặng bằng 0đ
+              discount_sp_c: 0,      // Chiết khấu quà tặng bằng 0
               discount_type_sp_c: 'direct',
               qty_c: giftQty,        
-              subtotal_c: 0,         
-              is_promo_gift: true,   
+              subtotal_c: 0,         // Thành tiền bằng 0đ
+              is_promo_gift: true,   // Đánh dấu nhận diện loại hàng khuyến mãi
               sgt_shipment_id_c: gift.sgt_shipment_id_c || "", 
               shipment_data: gift.shipment_data || null,
               _all_shipments: gift._all_shipments || []
@@ -235,66 +236,38 @@ export default function PromoModal({
       }
     });
 
+    // Bẫy kiểm tra an toàn: Đảm bảo file cha đã truyền prop setLineItems
     if (typeof setLineItems === 'function') {
       setLineItems(prev => {
+        // Bước 1: Thanh trừng tháo gỡ sạch các mặt hàng quà tặng cũ đã chọn đợt trước ra khỏi giỏ
         const purchasedItemsOnly = prev.filter(item => !item.is_promo_gift);
         const combinedList = [...purchasedItemsOnly];
         
+        // Bước 2: Nạp mảng quà tặng phẳng mới vào giỏ hàng
         newGiftsToInject.forEach(newGift => {
           const existGiftIndex = combinedList.findIndex(
             x => x.aos_products_id_c === newGift.aos_products_id_c && x.is_promo_gift
           );
           
           if (existGiftIndex !== -1) {
+            // Nếu trùng khít quà tặng, tiến hành cộng dồn số lượng
             combinedList[existGiftIndex].qty_c += newGift.qty_c;
           } else {
+            // Nếu chưa có, chèn dòng mới
             combinedList.push(newGift);
           }
         });
 
         return combinedList;
       });
+    } else {
+      console.error("❌ [LỖI ĐỒNG BỘ STATE]: Prop 'setLineItems' chưa được truyền vào cấu hình của <PromoModal /> ở file cha!");
     }
 
+    // Bắn mảng CTKM được áp dụng về hàm xử lý hậu cần của file cha
     if (typeof onApply === 'function') {
       onApply(selected);
     }
-  };
-
-  /**
-   * ====================================================================
-   * 🌟 🚀 ĐỘNG CƠ DỪNG ÁP DỤNG: THANH TRỪNG SẠCH BÁCH TRẠNG THÁI KHUYẾN MÃI
-   * ====================================================================
-   */
-  const handleResetPromos = () => {
-    // 1. Gỡ bỏ sạch dấu tích mảng ID đã tích chọn trên giao diện
-    setSelectedPromoIds([]);
-
-    // 2. Trả ngược số lượng chọn quà tặng (qty) của toàn bộ các CTKM về lại số 0 ban đầu
-    setPromos(prev => 
-      prev.map(promo => {
-        if (promo.type === 'gift' && Array.isArray(promo.gift_items)) {
-          return {
-            ...promo,
-            gift_items: promo.gift_items.map(gift => ({ ...gift, qty: 0 }))
-          };
-        }
-        return promo;
-      })
-    );
-
-    // 3. Thanh lọc giỏ hàng chính ở file cha, quét sạch các dòng có cờ 'is_promo_gift'
-    if (typeof setLineItems === 'function') {
-      setLineItems(prev => prev.filter(item => !item.is_promo_gift));
-    }
-
-    // 4. Bắn mảng trống về hàm xử lý hậu cần của form cha để dọn sạch ô tính tiền tổng hóa đơn
-    if (typeof onApply === 'function') {
-      onApply([]);
-    }
-
-    message.success("Đã dừng áp dụng và dọn sạch toàn bộ chiến dịch khuyến mãi!");
-    handleClose(); // Đóng modal tự động
   };
 
   const isAllSelected =
@@ -356,9 +329,7 @@ export default function PromoModal({
           {/* DANH SÁCH LẶP CTKM */}
           <div style={{ maxHeight: 480, overflowY: 'auto', overflowX: 'hidden', paddingRight: 4 }}>
             {loading ? (
-              <div style={{ padding: '80px 0', textAlign: 'center' }}>
-                <Spin description="Đang truy vấn Promotion Engine..." />
-              </div>
+              <div style={{ padding: '80px 0', textAlign: 'center' }}><Spin tip="Đang truy vấn Promotion Engine..." /></div>
             ) : filteredPromos.length === 0 ? (
               <Empty description="Không tìm thấy chương trình khuyến mãi nào phù hợp với điều kiện giỏ hàng" />
             ) : (
@@ -418,11 +389,10 @@ export default function PromoModal({
 
           {/* THANH ĐIỀU HƯỚNG BOTTOM MODAL */}
           <div style={{ marginTop: 20, borderTop: '1px solid #f0f0f0', paddingTop: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Text style={{ fontWeight: 500 }}>Đã chọn: <span style={{ color: '#1677ff' }}>{selectedPromoIds.length}</span> chiến dịch khuyến mãi</Text>
+            <Text type="secondary" style={{ fontWeight: 500 }}>Đã chọn: <span style={{ color: '#1677ff' }}>{selectedPromoIds.length}</span> chiến dịch khuyến mãi</Text>
             <Space size={10}>
               <Button onClick={handleClose}>Đóng</Button>
-              {/* 🌟 ĐÃ FIX: Điều hướng qua hàm xử lý handleResetPromos chuyên sâu dọn sạch bộ nhớ */}
-              <Button danger onClick={handleResetPromos}>Ngừng áp dụng</Button>
+              <Button danger onClick={() => { setSelectedPromoIds([]); if(typeof setLineItems === 'function') setLineItems(prev => prev.filter(x => !x.is_promo_gift)); onApply([]); }}>Dừng áp dụng</Button>
               <Button type="primary" onClick={handleApply} style={{ fontWeight: 500, padding: '0 20px' }}>Áp dụng</Button>
             </Space>
           </div>

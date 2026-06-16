@@ -1,7 +1,5 @@
 import React from 'react';
 import { Card, Row, Col, Typography } from 'antd';
-// 🟢 IMPORT COMPONENT MỚI VÀO ĐÂY:
-import GroupCustomerSelect from './GroupCustomerSelect'; // Sửa lại đường dẫn file cho đúng thực tế
 
 const { Text } = Typography;
 
@@ -20,6 +18,7 @@ export default function FormPanels({ allPanels, formData, handleFormChange, clea
             key={panel.key}
             title={<span className="panel-title-bold">{cleanSystemLabel(panel.label)}</span>}
             className="card"
+            /* 🔥 FIX: flex: 1 giúp Card phình to lấp đầy chiều cao được kéo giãn từ Col cha */
             style={{ flex: 1, display: 'flex', flexDirection: 'column', marginBottom: 0 }}
             styles={{ body: { padding: '24px 16px 12px 16px', flex: 1 } }}
           >
@@ -32,7 +31,7 @@ export default function FormPanels({ allPanels, formData, handleFormChange, clea
                     .sort((a, b) => a.col - b.col)
                     .map((field) => {
                       const colSpan = fieldsInRow > 1 ? 24 / fieldsInRow : 12;
-                      const isFullWidthField = field.type === 'text' || field.type === 'bool' || field.name === 'gr_cus_list';
+                      const isFullWidthField = field.type === 'text' || field.type === 'bool';
                       const maxInputWidth = isFullWidthField ? '100%' : '380px';
 
                       return (
@@ -50,20 +49,11 @@ export default function FormPanels({ allPanels, formData, handleFormChange, clea
                               style={{ display: 'flex', justifyContent: 'flex-start' }}
                             >
                               <div style={{ width: '100%', maxWidth: maxInputWidth }}>
-                                {/* 👑 BẪY LUỒNG ĐIỀU HƯỚNG DÀNH RIÊNG CHO TRƯỜNG CHỌN NHÓM KHÁCH HÀNG */}
-                                {field.name === 'gr_cus_list' ? (
-                                  <GroupCustomerSelect
-                                    value={formData[field.name]}
-                                    onChange={(newVal) => handleFormChange(field.name, newVal)}
-                                  />
-                                ) : (
-                                  /* Các trường dynamic khác của SuiteCRM giữ nguyên luồng render cũ */
-                                  <RenderField
-                                    field={field}
-                                    value={formData[field.name]}
-                                    onChange={(newVal) => handleFormChange(field.name, newVal)}
-                                  />
-                                )}
+                                <RenderField
+                                  field={field}
+                                  value={formData[field.name]}
+                                  onChange={(newVal) => handleFormChange(field.name, newVal)}
+                                />
                               </div>
                             </Col>
                           </Row>

@@ -9,91 +9,20 @@ import PromoModal from '../components/PromoModal';
 const { Text } = Typography;
 
 // =================================================================
-// 🌟 COMPONENT PHỤ: ĐỘNG CƠ CẬP NHẬT TIỀN REAL-TIME TUYỆT ĐỐI
+// 🌟 HÀM TIỆN ÍCH: CÔNG THỨC TÍNH THÀNH TIỀN REAL-TIME DÙNG CHUNG
 // =================================================================
-const QtyInputCell = ({ record, handleTableFieldChange, setLineItems }) => {
-  // Dùng state nội bộ để giữ tiêu điểm focus và gõ số mượt mà
-  const [localVal, setLocalVal] = useState(record.qty_c || 1);
+const calculateSubtotal = (price, qty, discount, discountType) => {
+  const unitPrice = Number(price || 0);
+  const finalQty = Number(qty || 1);
+  const discValue = Number(discount || 0);
 
-  // Đồng bộ ngược nếu giỏ hàng thay đổi từ các modal chọn nhanh bên ngoài
-  useEffect(() => {
-    setLocalVal(record.qty_c || 1);
-  }, [record.qty_c]);
-
-  return (
-    <InputNumber
-      size="small"
-      style={{ width: '75px' }}
-      min={1}
-      value={localVal}
-      onChange={(val) => {
-        setLocalVal(val); // Hiển thị số vừa gõ lên màn hình ngay lập tức
-
-        const numVal = Number(val || 0);
-        const maxCanSell = Number(record.shipment_data?.qty_cansell ?? 0);
-
-        // Nếu người dùng đang xóa trắng để gõ số mới, tạm dừng tính toán tiền để tránh lỗi NaN
-        if (val === null || val === undefined || numVal <= 0) return;
-
-        let finalQty = numVal;
-
-        // Chặn cứng nếu số lượng gõ vượt quá tồn kho khả dụng
-        if (finalQty > maxCanSell) {
-          message.warning(`Sản phẩm [${record.name_sp_c}] chỉ còn tối đa ${maxCanSell} sản phẩm khả dụng!`);
-          finalQty = maxCanSell;
-          setLocalVal(maxCanSell);
-        }
-
-        // Công thức toán học tính toán Thành tiền
-        const unitPrice = Number(record.price_c || 0);
-        const discount = Number(record.discount_sp_c || 0);
-        const discType = record.discount_type_sp_c || 'direct';
-
-        let total = unitPrice * finalQty;
-        if (discType === 'percent') {
-          total -= (total * discount) / 100;
-        } else {
-          total -= (discount * finalQty);
-        }
-        
-        const finalSubtotal = total >= 0 ? total : 0;
-
-        // 1. Đồng bộ lên Form chính của SuiteCRM để phục vụ lưu trữ vào Database
-        handleTableFieldChange(record.aos_products_id_c, 'qty_c', finalQty);
-        handleTableFieldChange(record.aos_products_id_c, 'subtotal_c', finalSubtotal);
-
-        // 2. Ép Table tạo bản sao mới để cột Tổng tiền nhảy số Real-time lập tức
-        setLineItems(prev => prev.map(item => {
-          if (item.aos_products_id_c !== record.aos_products_id_c) return item;
-          return {
-            ...item,
-            qty_c: finalQty,
-            subtotal_c: finalSubtotal
-          };
-        }));
-      }}
-      onBlur={() => {
-        // Phòng hờ rời ô khi đang trống, ép số lượng quay về tối thiểu = 1
-        if (localVal === null || localVal === undefined || Number(localVal) <= 0) {
-          setLocalVal(1);
-
-          const unitPrice = Number(record.price_c || 0);
-          const discount = Number(record.discount_sp_c || 0);
-          const discType = record.discount_type_sp_c || 'direct';
-          let total = unitPrice - (discType === 'percent' ? (unitPrice * discount) / 100 : discount);
-          const finalSubtotal = total >= 0 ? total : 0;
-
-          handleTableFieldChange(record.aos_products_id_c, 'qty_c', 1);
-          handleTableFieldChange(record.aos_products_id_c, 'subtotal_c', finalSubtotal);
-
-          setLineItems(prev => prev.map(item => {
-            if (item.aos_products_id_c !== record.aos_products_id_c) return item;
-            return { ...item, qty_c: 1, subtotal_c: finalSubtotal };
-          }));
-        }
-      }}
-    />
-  );
+  let total = unitPrice * finalQty;
+  if (discountType === 'percent') {
+    total -= (total * discValue) / 100;
+  } else {
+    total -= (discValue * finalQty);
+  }
+  return total >= 0 ? total : 0;
 };
 
 // =================================================================
@@ -110,7 +39,7 @@ export default function LineItemsSection({
   handleTableFieldChange,
   cleanSystemLabel,
   pricePolicyData,
-  warehouseId // 🏢 Nhận ID kho bãi từ Component cha truyền xuống
+  warehouseId 
 }) {
   const [openShipmentModal, setOpenShipmentModal] = useState(false);
   const [selectedRecordId, setSelectedRecordId] = useState(null);
@@ -131,12 +60,10 @@ export default function LineItemsSection({
   const handleApplyPromos = (selectedPromos) => {
       setAppliedPromos(selectedPromos);
       setIsPromoOpen(false);
-      console.log("Danh sách CTKM được chọn sau cùng:", selectedPromos);
   };
 
   const activePolicies = Array.isArray(pricePolicyData) ? pricePolicyData : [];
 
-  // TỰ ĐỘNG RE-FETCH KHI ĐỔI KHÁCH HOẶC THAY ĐỔI KHO BÃI
   useEffect(() => {
     setPage(1);
     setProductOptions([]);
@@ -145,7 +72,6 @@ export default function LineItemsSection({
     }
   }, [pricePolicyData, warehouseId]);
 
-  // ĐỘNG CƠ FETCH DATA SẢN PHẨM PHÂN TRANG THEO KHO BÃI CHỈ ĐỊNH
   const fetchProducts = async (currentPage, keyword, isLoadMore = false) => {
     if (!warehouseId || warehouseId === '') {
       setProductOptions([]);
@@ -176,7 +102,6 @@ export default function LineItemsSection({
           return {
             value: prod.id, 
             searchValue: cleanSearchString, 
-            
             label: (
               <div style={{ 
                 display: 'flex', 
@@ -228,7 +153,6 @@ export default function LineItemsSection({
                 </div>
               </div>
             ),
-            
             product: {
               aos_products_id_c: prod.id, 
               name: prod.name,
@@ -248,14 +172,13 @@ export default function LineItemsSection({
         if (!isLoadMore) setProductOptions([]);
       }
     } catch (error) {
-      console.error("Lỗi kết nối API phân trang kho bãi:", error);
+      console.error("Lỗi kết nối API:", error);
       if (!isLoadMore) setProductOptions([]);
     } finally {
       setFetchingProducts(false);
     }
   };
 
-  // Trình chống nhiễu gõ phím tìm kiếm
   useEffect(() => {
     if (searchKeyword.trim() === '') return; 
     const delayDebounceFn = setTimeout(() => {
@@ -264,7 +187,6 @@ export default function LineItemsSection({
     return () => clearTimeout(delayDebounceFn);
   }, [searchKeyword]);
 
-  // --- XỬ LÝ GOM NHÓM FIELDS THEO HÀNG (LOẠI BỎ SỐ LƯỢNG VÀ THÀNH TIỀN TỰ ĐỘNG) ---
   const normalizeFieldName = (name = '') => {
     let cleanName = name.trim();
     if (cleanName.includes('discount')) return 'discount';
@@ -276,20 +198,24 @@ export default function LineItemsSection({
     return text.trim().replace(/(?<=item)[a-zA-Z0-9]+(?=_c$)/, '');
   };
 
-  const groupedFields = {};
-  (panel?.fields || [])
-    .filter(field => {
-      const cleanName = cleanLineItemName(field.name);
-      // Loại bỏ 2 trường này khỏi Vardef động để tự can thiệp layout cố định độc lập
-      return cleanName !== 'line_item_c' && cleanName !== 'qty_c' && cleanName !== 'subtotal_c';
-    })
-    .forEach(field => {
-      const normalized = normalizeFieldName(field.name);
-      if (!groupedFields[normalized]) groupedFields[normalized] = [];
-      groupedFields[normalized].push(field);
-    });
+  const groupedFields = useMemo(() => {
+    const groups = {};
+    (panel?.fields || [])
+      .filter(field => {
+        const cleanName = cleanLineItemName(field.name);
+        return cleanName !== 'line_item_c' && cleanName !== 'qty_c' && cleanName !== 'subtotal_c';
+      })
+      .forEach(field => {
+        const normalized = normalizeFieldName(field.name);
+        if (!groups[normalized]) groups[normalized] = [];
+        groups[normalized].push(field);
+      });
+    return groups;
+  }, [panel?.fields]);
 
-  // --- KHỞI TẠO CẤU TRÚC COLUMNS TABLE ---
+  // =================================================================
+  // 👑 GIẢI PHÁP TRIỆT TIÊU LỖI ĐỔI HÀNG LOẠT: INLINE COLUMN RENDERING
+  // =================================================================
   const columns = useMemo(() => {
     return [
       {
@@ -301,7 +227,7 @@ export default function LineItemsSection({
       },
       ...Object.entries(groupedFields).map(([fieldKey, fields]) => {
         const mainField = fields[0];
-        const isEditable = (mainField.readonly === true || mainField.readonly === 1);
+        const isEditable = (mainField.readonly === true || mainField.readonly === 1 || mainField.readonly === "1");
 
         if (fieldKey === 'product_image_c') {
           return {
@@ -331,6 +257,14 @@ export default function LineItemsSection({
             ellipsis: true,
             render: (_, record) => {
               const shipment = record?.shipment_data;
+              if (record.is_promo_gift) {
+                return (
+                  <Text style={{ fontSize: 13, color: '#666', fontWeight: 500 }}>
+                    {shipment?.lot_name ? `${dayjs(shipment.import_date).format('DD/MM/YYYY')}` : 'Lô khuyến mãi'}
+                  </Text>
+                );
+              }
+
               return (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, width: 'auto' }}>
                   <span style={{ fontSize: 13, fontWeight: 500, color: shipment?.lot_name ? '#111' : '#999' }}>
@@ -356,9 +290,7 @@ export default function LineItemsSection({
           };
         }
 
-        // 🌟 KHỐI LAYOUT CỐ ĐỊNH: SỐ LƯỢNG (REAL-TIME) | CHIẾT KHẤU | TỔNG TIỀN (REAL-TIME)
         if (fieldKey === 'discount') {
-          const typeField = fields.find(f => f.type === 'enum') || {};
           return [
             {
               title: <span className="table-header-bold">Số lượng</span>,
@@ -366,37 +298,88 @@ export default function LineItemsSection({
               key: 'custom_qty_column_cell',
               width: 85,
               align: 'center',
-              render: (v, record) => (
-                // Truyền prop setLineItems sang component phụ để kích hoạt ép re-render Table nhảy tiền
-                <QtyInputCell record={record} handleTableFieldChange={handleTableFieldChange} setLineItems={setLineItems} />
-              )
+              render: (qtyValue, record) => {
+                if (record.is_promo_gift) {
+                  return <Text style={{ fontSize: 13, fontWeight: 600, color: '#52c41a' }}>{qtyValue || 1}</Text>;
+                }
+                return (
+                  <InputNumber
+                    size="small"
+                    style={{ width: '75px' }}
+                    min={1}
+                    value={qtyValue || 1}
+                    onChange={(val) => {
+                      const numVal = Number(val || 0);
+                      const maxCanSell = Number(record.shipment_data?.qty_cansell ?? 0);
+                      if (val === null || val === undefined || numVal <= 0) return;
+
+                      let finalQty = numVal;
+                      if (finalQty > maxCanSell) {
+                        message.warning(`Sản phẩm [${record.name_sp_c}] chỉ còn tối đa ${maxCanSell} khả dụng!`);
+                        finalQty = maxCanSell;
+                      }
+
+                      const finalSubtotal = calculateSubtotal(record.price_c, finalQty, record.discount_sp_c, record.discount_type_sp_c);
+                      handleTableFieldChange(record.aos_products_id_c, 'qty_c', finalQty);
+                      handleTableFieldChange(record.aos_products_id_c, 'subtotal_c', finalSubtotal);
+
+                      setLineItems(prev => prev.map(item => 
+                        item.aos_products_id_c === record.aos_products_id_c 
+                          ? { ...item, qty_c: finalQty, subtotal_c: finalSubtotal } 
+                          : item
+                      ));
+                    }}
+                  />
+                );
+              }
             },
             {
               title: <span className="table-header-bold">Chiết khấu</span>,
-              key: 'discount_group_column',
+              key: `discount_group_column_inline_${fieldKey}`,
               align: 'center',
               ellipsis: true,
               render: (_, record) => {
+                if (record.is_promo_gift) {
+                  return <Text style={{ fontSize: 13, color: '#52c41a', fontWeight: 500 }}>Miễn phí 🎁</Text>;
+                }
+
                 const type = record.discount_type_sp_c || 'direct';
-                const unitPrice = Number(record.origin_amount || 0);
+                const unitPrice = Number(record.price_c || 0);
                 const discountValue = Number(record.discount_sp_c || 0);
+
                 const isOverPercent = type === 'percent' && discountValue > 100;
-                const isOverMoney = type === 'direct' && discountValue > unitPrice;
+                const isOverMoney = type === 'direct' && unitPrice > 0 && discountValue > unitPrice;
                 const hasError = isOverPercent || isOverMoney;
+                
                 const realDiscount = type === 'percent' ? (unitPrice * discountValue) / 100 : discountValue;
 
                 return (
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, width: '120px', margin: '0 auto' }}>
+                  <div key={`discount_cell_wrapper_${record.aos_products_id_c}`} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, width: '120px', margin: '0 auto' }}>
                     <Select
                       size="small"
                       value={type}
                       style={{ width: '100%' }}
                       disabled={!isEditable}
-                      onChange={(newType) => handleTableFieldChange(record.aos_products_id_c, 'discount_type_sp_c', newType)}
-                      options={(typeField.options || [
+                      onChange={(newType) => {
+                        let validDiscount = record.discount_sp_c || 0;
+                        if (newType === 'percent' && validDiscount > 100) validDiscount = 0;
+                        if (newType === 'direct' && unitPrice > 0 && validDiscount > unitPrice) validDiscount = 0;
+
+                        const finalSubtotal = calculateSubtotal(record.price_c, record.qty_c, validDiscount, newType);
+                        handleTableFieldChange(record.aos_products_id_c, 'discount_type_sp_c', newType);
+                        handleTableFieldChange(record.aos_products_id_c, 'discount_sp_c', validDiscount);
+                        handleTableFieldChange(record.aos_products_id_c, 'subtotal_c', finalSubtotal);
+
+                        setLineItems(prev => prev.map(item => 
+                          item.aos_products_id_c === record.aos_products_id_c 
+                            ? { ...item, discount_type_sp_c: newType, discount_sp_c: validDiscount, subtotal_c: finalSubtotal } 
+                            : item
+                        ));
+                      }}
+                      options={[
                         { label: 'Chiết khấu tiền', value: 'direct' },
                         { label: 'Chiết khấu %', value: 'percent' }
-                      ])}
+                      ]}
                     />
                     <InputNumber
                       size="small"
@@ -405,18 +388,30 @@ export default function LineItemsSection({
                       min={0}
                       disabled={!isEditable}
                       style={{ width: '100%' }}
-                      placeholder={type === 'percent' ? 'Nhập %' : 'Nhập số tiền'}
+                      placeholder={type === 'percent' ? 'Nhập %' : 'Nhập tiền'}
                       formatter={(val) => type === 'direct' ? `${val}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : val}
                       parser={(val) => (val || '').replace(/,/g, '')}
-                      onChange={(val) => handleTableFieldChange(record.aos_products_id_c, 'discount_sp_c', val)}
+                      onChange={(val) => {
+                        const numVal = Number(val || 0);
+                        const finalSubtotal = calculateSubtotal(record.price_c, record.qty_c, numVal, type);
+                        
+                        handleTableFieldChange(record.aos_products_id_c, 'discount_sp_c', numVal);
+                        handleTableFieldChange(record.aos_products_id_c, 'subtotal_c', finalSubtotal);
+                        
+                        setLineItems(prev => prev.map(item => 
+                          item.aos_products_id_c === record.aos_products_id_c 
+                            ? { ...item, discount_sp_c: numVal, subtotal_c: finalSubtotal } 
+                            : item
+                        ));
+                      }}
                     />
                     {hasError && (
-                      <span style={{ color: '#ff4d4f', fontSize: 11 }}>
+                      <span style={{ color: '#ff4d4f', fontSize: 11, fontWeight: 500 }}>
                         {isOverPercent ? 'Không vượt 100%' : 'Không vượt đơn giá'}
                       </span>
                     )}
                     {!hasError && (
-                      <div style={{ fontSize: 10, color: '#999' }}>
+                      <div style={{ fontSize: 10, color: '#999', marginTop: 2 }}>
                         {type === 'percent' ? `~ ${realDiscount.toLocaleString()} đ` : `${unitPrice ? ((realDiscount / unitPrice) * 100).toFixed(1) : 0}%`}
                       </div>
                     )}
@@ -424,7 +419,6 @@ export default function LineItemsSection({
                 );
               }
             },
-            // 🌟 CỘT TỔNG TIỀN (THÀNH TIỀN) ĐÃ ĐƯỢC KHÔI PHỤC VÀ ĐỒNG BỘ REAL-TIME
             {
               title: <span className="table-header-bold">Tổng tiền</span>,
               dataIndex: 'subtotal_c',
@@ -444,22 +438,24 @@ export default function LineItemsSection({
           dataIndex: fieldKey,
           key: fieldKey,
           ellipsis: mainField.type === 'varchar' ? false : true,
-          
           render: (v, record) => {
             if (mainField.type === 'varchar') {
               return (
-                <div style={{ 
-                  width: '240px',          
-                  whiteSpace: 'normal',    
-                  wordBreak: 'break-word', 
-                  fontSize: '13px',
-                  lineHeight: '1.4',
-                  fontWeight: 500,
-                  textAlign: 'left'        
-                }}>
+                <div style={{ width: '240px', whiteSpace: 'normal', wordBreak: 'break-word', fontSize: '13px', lineHeight: '1.4', fontWeight: 500, textAlign: 'left' }}>
                   {v || '---'}
                 </div>
               );
+            }
+
+            if (record.is_promo_gift) {
+              if (mainField.type === 'enum') {
+                const matchedOption = (mainField.options || []).find(opt => opt.value === v);
+                return <Text style={{ fontSize: 13 }}>{matchedOption ? matchedOption.label : (v || '---')}</Text>;
+              }
+              if (mainField.type === 'currency' || mainField.type === 'int' || mainField.type === 'decimal') {
+                return <Text style={{ fontSize: 13 }}>{v ? Number(v).toLocaleString() : '0'}</Text>;
+              }
+              return <Text style={{ fontSize: 13 }}>{v || '---'}</Text>;
             }
 
             if (isEditable) {
@@ -530,9 +526,8 @@ export default function LineItemsSection({
         )
       }
     ];
-  }, [groupedFields]);
+  }, [groupedFields, lineItems]); 
 
-  // HANDLE SELECT PRODUCT CHỌN TỪ DROPDOWN KHÁCH HÀNG
   const interceptedHandleSelectProduct = (productId, option) => {
     const selectedProduct = option.product || {};
     const matchedPolicy = activePolicies.length > 0 
@@ -545,33 +540,20 @@ export default function LineItemsSection({
       const isExist = prev.some(item => item.aos_products_id_c === productId);
       
       if (isExist) {
-        const updatedList = prev.map(item => {
+        return prev.map(item => {
           if (item.aos_products_id_c !== productId) return item;
           
           const newQty = Number(item.qty_c || 0) + 1;
           const maxCanSell = Number(item.shipment_data?.qty_cansell ?? 0);
 
           if (newQty > maxCanSell) {
-            message.warning(`Sản phẩm [${item.name_sp_c}] - Lô [${item.shipment_data?.lot_name || 'Mặc định'}] chỉ còn tối đa ${maxCanSell} sản phẩm khả dụng!`);
+            message.warning(`Sản phẩm [${item.name_sp_c}] chỉ còn tối đa ${maxCanSell} sản phẩm khả dụng!`);
             return item; 
           }
 
-          const discount = Number(item.discount_sp_c || 0);
-          const discType = item.discount_type_sp_c || 'direct';
-          
-          let total = targetUnitPrice * newQty;
-          if (discType === 'percent') total -= (total * discount / 100);
-          else total -= (discount * newQty);
-
-          return { 
-            ...item, 
-            price_c: targetUnitPrice, 
-            qty_c: newQty, 
-            subtotal_c: total >= 0 ? total : 0 
-          };
+          const total = calculateSubtotal(targetUnitPrice, newQty, item.discount_sp_c, item.discount_type_sp_c);
+          return { ...item, price_c: targetUnitPrice, qty_c: newQty, subtotal_c: total };
         });
-
-        return updatedList;
       }
 
       const hasShipmentData = selectedProduct.shipment_data && selectedProduct.shipment_data.length > 0;
@@ -610,13 +592,7 @@ export default function LineItemsSection({
         style={{ marginTop: 12, borderRadius: 12 }}
         styles={{ body: { padding: '16px' } }}
       >
-        <div style={{ 
-          marginBottom: 16, 
-          width: '100%', 
-          display: 'flex',      
-          alignItems: 'center',  
-          gap: '12px'            
-        }}>
+        <div style={{ marginBottom: 16, width: '100%', display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div style={{ flex: 1 }}>
             <Select
               showSearch
@@ -691,7 +667,7 @@ export default function LineItemsSection({
         </div>
 
         <Table
-          rowKey="aos_products_id_c"
+          rowKey={(record) => record.tableRowKey || record.aos_products_id_c} 
           pagination={false}
           dataSource={lineItems}
           scroll={{ x: 'max-content' }}
@@ -702,6 +678,7 @@ export default function LineItemsSection({
         {panel?.line_item_source_module === 'sgt_orderdetail' ? (
           <LineItemsFooter 
             lineItems={lineItems}
+            setLineItems={setLineItems}
             formData={formData}
             handleFormChange={handleFormChange}
             isPromoOpen={isPromoOpen}
@@ -711,15 +688,6 @@ export default function LineItemsSection({
           />
         ) : null}
 
-        <PromoModal
-          isOpen={isPromoOpen}
-          onClose={() => setIsPromoOpen(false)}
-          onApply={handleApplyPromos}
-          lineItems={lineItems}
-          formData={formData}
-        />
-
-        {/* MODAL CHỌN LÔ HÀNG ĐỘNG */}
         <Modal
           open={openShipmentModal}
           footer={null}
@@ -766,7 +734,7 @@ export default function LineItemsSection({
                     onClick={() => {
                       const updatedLines = lineItems.map(item => {
                         if (String(item.aos_products_id_c) === String(selectedRecordId)) {
-                          return { 
+                          return {
                             ...item, 
                             sgt_shipment_id_c: shipment.id, 
                             shipment_data: shipment 

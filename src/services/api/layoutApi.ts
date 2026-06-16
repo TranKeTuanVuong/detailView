@@ -4,7 +4,7 @@
 
   const API_URL = import.meta.env.DEV
   ? ''
-  : 'http://localhost/baotram';
+  : 'http://localhost/baotramb1';
 
 
 /**

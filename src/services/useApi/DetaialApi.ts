@@ -1,155 +1,128 @@
-import React,{useEffect,useState} from "react";
-import { Alert, DatePicker, Typography } from 'antd';
-import dayjs from 'dayjs';
-const { Text, Title } = Typography;
-import {fetchEditViewLayout,fetchListViewLayout,saveUniversalModuleData } from '../api/layoutApi';
-
-
-
-
-
+import React, { useState, useEffect, useMemo } from 'react';
+import { message } from 'antd';
+import { fetchEditViewLayout, saveUniversalModuleData } from '../api/layoutApi';
 
 export const DetailApi = () => {
-
-  const [layout, setLayout] = useState(null);
+  const [layout, setLayout] = useState<any>(null);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [module, setModule] = useState<string>('');
   
-  const [urlParams, setUrlParams] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [action, setAction] = useState<string>('');
-  const [module,setModule] = useState('AOS_Products')
+  // Các state quản lý tham số bối cảnh hệ thống động từ URL SuiteCRM
+  const [action, setAction] = useState<string>('CreateView');
+  const [checkAction, setCheckAction] = useState<string | null>(null);
   const [recordId, setRecordId] = useState<string | null>(null);
-  
-  //const module='AOS_Products';
-  const checkAction = '';
-  const type = 'edit'
 
-
-
-
-
-   // 1. Logic tạo URL cho các nút bấm (Chuyển từ PHP sang JavaScript)
-  const generateUrls = (module: string, action: string, checkAction: string | null, recordId: string | null) => {
-    const baseUrl = 'https://demo.saigongreentech.com/baotramdev/';
+  // =================================================================
+  // 1. ĐỘNG CƠ TẠO URL ĐỘNG TỰ ĐỘNG BẪY ĐƯỜNG DẪN MÔI TRƯỜNG (Vite vs Prod)
+  // =================================================================
+  const generateUrls = (
+    currentModule: string, 
+    currentAction: string, 
+    currentCheckAction: string | null, 
+    currentRecordId: string | null
+  ) => {
+    // 🌟 KHỐI TỰ ĐỘNG ĐỊNH TUYẾN BASE URL: 
+    // Nếu chạy local dev (Vite 5173) thì bắt nối thêm domain localhost, nếu nhúng thật dùng đường dẫn gốc tương đối.
+    const baseUrl = window.location.port === '5173' ? 'http://localhost/baotramb1/' : './';
     
-    // Các URL cơ bản
-    const url_import = `${baseUrl}index.php?module=Import&action=Step1&import_module=${module}&return_module=${module}&return_action=index`;
-    const url_list = `${baseUrl}index.php?module=${module}&action=index`;
-    const url_create = `${baseUrl}index.php?module=${module}&action=EditView&return_module=${module}&return_action=DetailView&check_action=CreateView`;
+    const url_import = `${baseUrl}index.php?module=Import&action=Step1&import_module=${currentModule}&return_module=${currentModule}&return_action=index`;
+    const url_list = `${baseUrl}index.php?module=${currentModule}&action=index`;
+    const url_create = `${baseUrl}index.php?module=${currentModule}&action=EditView&return_module=${currentModule}&return_action=DetailView&check_action=CreateView`;
     
-    // URL Edit (Chỉ hợp lệ khi có recordId)
-    const url_edit = recordId 
-        ? `${baseUrl}index.php?module=${module}&action=EditView&record=${recordId}`
-        : null;
+    const url_edit = currentRecordId 
+      ? `${baseUrl}index.php?module=${currentModule}&action=EditView&record=${currentRecordId}`
+      : null;
 
     let btn_create_active = "";
     let btn_list_active = "";
     let btn_edit_active = "";
 
-    // Logic xác định trạng thái Active
-    // 1. Active nút Danh sách
-    if (action === "ListView" || action === "index" || (checkAction === "index")) {
-        btn_list_active = "btn-module-active";
+    if (currentAction === "ListView" || currentAction === "index" || currentCheckAction === "index") {
+      btn_list_active = "btn-module-active";
     }
     
-    // 2. Active nút Tạo mới (EditView nhưng không có recordId hoặc check_action là CreateView)
-    if ((checkAction === "CreateView") || (action === "EditView" && !recordId)) {
-        btn_create_active = "btn-module-active";
+    if (currentCheckAction === "CreateView" || (currentAction === "EditView" && !currentRecordId)) {
+      btn_create_active = "btn-module-active";
     }
 
-    // 3. Active nút Chỉnh sửa (EditView và có recordId)
-    if (action === "EditView" && recordId && checkAction !== "CreateView") {
-        btn_edit_active = "btn-module-active";
+    if (currentAction === "EditView" && currentRecordId && currentCheckAction !== "CreateView") {
+      btn_edit_active = "btn-module-active";
     }
 
     return {
-        url_import,
-        url_list,
-        url_create,
-        url_edit,
-        btn_create_active,
-        btn_list_active,
-        btn_edit_active
+      url_import,
+      url_list,
+      url_create,
+      url_edit,
+      btn_create_active,
+      btn_list_active,
+      btn_edit_active
     };
-};
+  };
 
-    const urls = generateUrls(module, action, checkAction, recordId);
+  const urls = useMemo(() => {
+    return generateUrls(module, action, checkAction, recordId);
+  }, [module, action, checkAction, recordId]);
 
-    
+  // =================================================================
+  // 🟢 2. LUỒNG TẢI LAYOUT LINH HOẠT ĐỘNG (BẬT/TẮT TỰ ĐỘNG QUA COMPONENT CHA)
+  // =================================================================
+  const handleLayOut = async (customModule?: string, viewType: 'edit' | 'detail' = 'edit') => {
+    const targetModule = customModule || module;
 
-   const handleLayOut = async (customModule?: string) => {
-        const mod = customModule || module;
-        console.log(mod)
+    if (!targetModule) return;
 
-        if (!mod) return;
+    setLoading(true);
+    try {
+      // Bắn chính xác viewType ('edit' hoặc 'detail') sang API để bốc file def tương ứng từ PHP
+      const res = await fetchEditViewLayout(targetModule, viewType);
 
-        setLoading(true);
-
-        try {
-            const res = await fetchEditViewLayout(mod, type);
-
-            if (!res) {
-            console.warn("Không lấy dữ liệu được");
-            return;
-            }
-            console.log(res)
-
-            setLayout(res);
-        } catch (e) {
-            console.warn(e);
-        } finally {
-            setLoading(false);
-        }
-    };
-    
-    
-
-    useEffect(() => {
-        handleLayOut();
-        }, []);
-
-
-    const handleSave = async (data: any) => { 
-        try {
-            const res = await saveUniversalModuleData(data);
-            if (res.success) {
-                console.log('Dữ liệu đã được lưu thành công');
-                alert('Dữ liệu đã được lưu thành công');
-              
-            } else {
-                console.warn('Lỗi khi lưu dữ liệu:', res.message);
-                alert('Lỗi khi lưu dữ liệu');
-            }
-
-        }catch (error) { 
-            console.error('Lỗi khi lưu dữ liệu:', error);
-            throw error;
-        }
-    }  
-
-
-   
-  
- 
-
-
-
-
-
-    return {
-        urls,
-        layout,
-        loading,
-        module,
-        setModule,
-        handleLayOut,handleSave
-
+      if (!res) {
+        console.warn("Không lấy được dữ liệu layout từ API");
+        return;
+      }
       
-       
-
-
-
-
-
-
+      setLayout(res);
+    } catch (e) {
+      console.warn("Lỗi trong quá trình tải Layout:", e);
+    } finally {
+      setLoading(false);
     }
-}
+  };
+
+  // =================================================================
+  // 3. ĐỘNG CƠ LƯU PAYLOAD LÊN SERVER CRM
+  // =================================================================
+  const handleSave = async (data: any) => { 
+    try {
+      const res = await saveUniversalModuleData(data);
+      if (res && res.success) {
+        message.success('Dữ liệu đã được lưu thành công!');
+        return res;
+      } else {
+        console.warn('Lỗi khi lưu dữ liệu:', res?.message);
+        message.error(res?.message || 'Lỗi khi lưu dữ liệu');
+        return res;
+      }
+    } catch (error) { 
+      console.error('Lỗi kết nối API lưu dữ liệu:', error);
+      message.error('Không thể kết nối tới máy chủ lưu dữ liệu');
+      throw error;
+    }
+  };
+
+  return {
+    urls,
+    layout,
+    loading,
+    module,
+    setModule,
+    action,
+    setAction,
+    setCheckAction,
+    recordId,
+    setRecordId, // 🌟 Trả ra ngoài để file cha DetailView.jsx đồng bộ đồng loạt trị số
+    handleLayOut,
+    handleSave
+  };
+};

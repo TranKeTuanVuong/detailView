@@ -1,22 +1,63 @@
 import React, { useState, useEffect } from 'react';
 import { Row, Col, Input, Typography, Divider, InputNumber, Modal, Select, Button, message } from 'antd';
+import { GiftOutlined } from '@ant-design/icons';
+import PromoModal from './PromoModal';
+
 const { Text } = Typography;
 const { TextArea } = Input;
-import PromoModal from './PromoModal'; // Nhớ check lại đường dẫn đúng tới file PromoModal.jsx
-import { GiftOutlined } from '@ant-design/icons';
 
-export default function LineItemsFooter({ lineItems, formData, handleFormChange, isPromoOpen, setIsPromoOpen, appliedPromos, handleApplyPromos }) {
+export default function LineItemsFooter({ 
+  lineItems = [], 
+  setLineItems, 
+  formData = {}, 
+  handleFormChange, 
+  isPromoOpen, 
+  setIsPromoOpen, 
+  appliedPromos = [], // Mảng danh sách chiến dịch KM đang áp dụng
+  handleApplyPromos 
+}) {
   
   // --- 1. CÁC STATE QUẢN LÝ MODAL CHIẾT KHẤU NỘI BỘ ---
   const [discountModalOpen, setDiscountModalOpen] = useState(false);
-  const [discountType, setDiscountType] = useState('direct'); // 'direct' hoặc 'percent'
+  const [discountType, setDiscountType] = useState('direct'); 
   const [discountValue, setDiscountValue] = useState(0);
 
-  // 2. Tính toán tổng số tiền gốc của các sản phẩm trong giỏ hàng
+  // Tính toán tổng số tiền gốc của sản phẩm mua (Loại trừ hàng quà tặng giá 0đ ra)
   const totalAmount = lineItems.reduce((sum, item) => sum + Number(item.subtotal_c || 0), 0);
-  const totalQty = lineItems.reduce((sum, item) => sum + Number(item.qty_c || 0), 0);
+  const totalQty = lineItems.filter(item => !item.is_promo_gift).reduce((sum, item) => sum + Number(item.qty_c || 0), 0);
+  const totalGiftQty = lineItems.filter(item => item.is_promo_gift).reduce((sum, item) => sum + Number(item.qty_c || 0), 0);
 
-  // Đồng bộ dữ liệu cũ từ formData lên Modal khi người dùng mở lại Modal
+  // ====================================================================
+  // 🟢 ĐỘNG CƠ ĐỒNG BỘ CTKM: TỰ ĐỘNG BẮT ĐỂ CẬP NHẬT HOẶC XÓA SẠCH CHIẾT KHẤU
+  // ====================================================================
+  useEffect(() => {
+    if (Array.isArray(appliedPromos) && appliedPromos.length > 0) {
+      // Tìm chiến dịch khuyến mãi dạng giảm phần trăm tổng đơn hàng từ Engine trả về
+      const percentPromo = appliedPromos.find(
+        (p) => p.type === 'discount' || String(p.discount_value).includes('%')
+      );
+
+      if (percentPromo) {
+        // Trích xuất số từ chuỗi (Ví dụ: "10%" hoặc số 10)
+        const numericValue = parseFloat(String(percentPromo.discount_value).replace(/[^0-9.]/g, ''));
+        
+        if (!isNaN(numericValue) && numericValue > 0) {
+          // Tự động đẩy dữ liệu chiết khấu phần trăm của CTKM lên Form chính hóa đơn của SuiteCRM
+          handleFormChange('discount_type_c', 'percent');
+          handleFormChange('total_discount_c', numericValue);
+        }
+      }
+    } else {
+      // 🌟 KHỐI FIX TRONG TÂM: Khi bấm "Ngừng áp dụng", appliedPromos trả về mảng rỗng []
+      // Tiến hành kiểm tra nếu loại hình chiết khấu hiện tại đang là do KM đẩy lên (ví dụ: percent), tự động giải phóng về 0
+      if (formData.discount_type_c === 'percent' || Number(formData.total_discount_c) > 0) {
+        handleFormChange('discount_type_c', 'direct');
+        handleFormChange('total_discount_c', 0);
+      }
+    }
+  }, [appliedPromos]);
+
+  // Đồng bộ dữ liệu cũ từ formData lên Modal khi người dùng mở lại Modal nhập tay
   useEffect(() => {
     if (discountModalOpen) {
       setDiscountType(formData.discount_type_c || 'direct');
@@ -26,11 +67,9 @@ export default function LineItemsFooter({ lineItems, formData, handleFormChange,
 
   // --- 3. ĐỘNG CƠ TÍNH TOÁN GIÁ TRỊ CHIẾT KHẤU THỰC TẾ (HIỂN THỊ RA TIỀN) ---
   const getCalculatedDiscountMoney = () => {
-    // Nếu chọn kiểu giảm theo %, tính số tiền tương ứng dựa trên tổng tiền đơn hàng
     if (discountType === 'percent') {
       return (totalAmount * Number(discountValue || 0)) / 100;
     }
-    // Nếu chọn giảm tiền mặt trực tiếp
     return Number(discountValue || 0);
   };
 
@@ -51,14 +90,13 @@ export default function LineItemsFooter({ lineItems, formData, handleFormChange,
   const labelStyle = { fontSize: 13, color: '#555' };
   const valueStyle = { fontSize: 14, fontWeight: 600, color: '#111' };
 
-  // --- 4. XỬ LÝ KHI BẤM NÚT XÁC NHẬN TRÊN MODAL ---
+  // --- 4. XỬ LÝ KHI BẤM NÚT XÁC NHẬN TRÊN MODAL NHẬP TAY ---
   const handleConfirmDiscount = () => {
     if (discountType === 'direct' && discountValue > totalAmount) {
       message.error('Số tiền chiết khấu không được vượt quá tổng tiền đơn hàng!');
       return;
     }
     
-    // Đẩy đồng thời 2 giá trị lên form cha của SuiteCRM
     handleFormChange('discount_type_c', discountType);
     handleFormChange('total_discount_c', discountValue);
     
@@ -75,23 +113,24 @@ export default function LineItemsFooter({ lineItems, formData, handleFormChange,
           </span>
         </Col>
         <Col>
-  <Button 
-    type="link" 
-    icon={<GiftOutlined />} 
-    onClick={() => setIsPromoOpen(true)}
-    style={{ fontWeight: 500, padding: 0, height: 'auto' }}
-  >
-    Áp dụng chương trình khuyến mại
-  </Button>
-  
-  <PromoModal 
-    isOpen={isPromoOpen} 
-    onClose={() => setIsPromoOpen(false)} 
-    onApply={handleApplyPromos} 
-    lineItems={lineItems}
-    formData={formData}
-  />
-</Col>
+          <Button 
+            type="link" 
+            icon={<GiftOutlined />} 
+            onClick={() => setIsPromoOpen(true)}
+            style={{ fontWeight: 500, padding: 0, height: 'auto' }}
+          >
+            Áp dụng chương trình khuyến mại
+          </Button>
+          
+          <PromoModal 
+            isOpen={isPromoOpen} 
+            onCancel={() => setIsPromoOpen(false)} 
+            onApply={handleApplyPromos} 
+            lineItems={lineItems}
+            setLineItems={setLineItems}
+            formData={formData}
+          />
+        </Col>
       </Row>
 
       <Row gutter={32}>
@@ -112,17 +151,17 @@ export default function LineItemsFooter({ lineItems, formData, handleFormChange,
           
           {/* Tổng tiền */}
           <Row justify="space-between" align="middle">
-            <Text style={labelStyle}>Tổng tiền ({totalQty} sản phẩm)</Text>
+            <Text style={labelStyle}>Tổng tiền hàng ({totalQty} sản phẩm)</Text>
             <Text style={valueStyle}>{totalAmount.toLocaleString()} đ</Text>
           </Row>
 
-          {/* Chiết khấu đơn hàng (Bấm vào chữ hoặc số đều mở Modal) */}
+          {/* Chiết khấu đơn hàng */}
           <Row justify="space-between" align="middle">
             <Text 
               style={{ ...labelStyle, color: '#1677ff', cursor: 'pointer', textDecoration: 'underline' }}
               onClick={() => setDiscountModalOpen(true)}
             >
-              Chiết khấu {savedDiscountType === 'percent' ? `(${savedDiscountValue}%)` : ''} 📝
+              Chiết khấu tổng đơn {savedDiscountType === 'percent' ? `(${savedDiscountValue}%)` : ''} 📝
             </Text>
             <Text 
               style={{ ...valueStyle, color: '#ff4d4f', cursor: 'pointer' }}
@@ -131,6 +170,14 @@ export default function LineItemsFooter({ lineItems, formData, handleFormChange,
               {displayDiscountMoney > 0 ? `- ${displayDiscountMoney.toLocaleString()}` : '0'} đ
             </Text>
           </Row>
+
+          {/* Hàng quà tặng kèm theo đơn nếu có */}
+          {totalGiftQty > 0 && (
+            <Row justify="space-between" align="middle" style={{ background: '#f5f5f5', padding: '4px 8px', borderRadius: 4 }}>
+              <Text style={{ ...labelStyle, color: '#52c41a', fontWeight: 500 }}>🎁 Sản phẩm quà tặng đi kèm:</Text>
+              <Text style={{ ...valueStyle, color: '#52c41a' }}>{totalGiftQty} sản phẩm (0 đ)</Text>
+            </Row>
+          )}
 
           {/* Phí giao hàng */}
           <Row justify="space-between" align="middle">
@@ -143,7 +190,7 @@ export default function LineItemsFooter({ lineItems, formData, handleFormChange,
               placeholder="0"
               formatter={(v) => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
               parser={(v) => v.replace(/,/g, '')}
-              onChange={(val) => handleFormChange('shipping_fee_c', val)}
+              onChange={(val) => handleFormChange('shipping_fee_c', val || 0)}
             />
           </Row>
 
@@ -174,7 +221,7 @@ export default function LineItemsFooter({ lineItems, formData, handleFormChange,
               placeholder="0"
               formatter={(v) => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
               parser={(v) => v.replace(/,/g, '')}
-              onChange={(val) => handleFormChange('amount_paid_c', val)}
+              onChange={(val) => handleFormChange('amount_paid_c', val || 0)}
             />
           </Row>
 
@@ -194,9 +241,7 @@ export default function LineItemsFooter({ lineItems, formData, handleFormChange,
         </Col>
       </Row>
 
-      {/* ========================================================================= */}
-      {/* 🔥 CẤU TRÚC MODAL CHIẾT KHẤU ĐƯỢC CHỈNH SỬA TOÀN DIỆN CHUẨN ĐẸP CỦA BẠN */}
-      {/* ========================================================================= */}
+      {/* MODAL CONFIG CHIẾT KHẤU ĐƠN HÀNG CHỦ ĐỘNG */}
       <Modal
         title={<span style={{ fontWeight: 600 }}>Thiết lập chiết khấu đơn hàng</span>}
         open={discountModalOpen}
@@ -206,7 +251,6 @@ export default function LineItemsFooter({ lineItems, formData, handleFormChange,
         centered
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingTop: 8 }}>
-          
           {/* Chọn kiểu chiết khấu */}
           <div>
             <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>Kiểu chiết khấu</Text>
@@ -215,7 +259,7 @@ export default function LineItemsFooter({ lineItems, formData, handleFormChange,
               style={{ width: '100%' }}
               onChange={(value) => {
                 setDiscountType(value);
-                setDiscountValue(0); // Reset về 0 tránh lỗi tính toán vượt ngưỡng
+                setDiscountValue(0); 
               }}
               options={[
                 { label: 'Chiết khấu bằng tiền mặt (đ)', value: 'direct' },
@@ -244,7 +288,7 @@ export default function LineItemsFooter({ lineItems, formData, handleFormChange,
             />
           </div>
 
-          {/* 🔥 HIỂN THỊ ĐỘNG SỐ TIỀN ĐƯỢC GIẢM KHI NGƯỜI DÙNG ĐANG GÕ THAY ĐỔI TRONG MODAL */}
+          {/* Hiển thị quy đổi động */}
           <div style={{ backgroundColor: '#f5f5f5', padding: '10px 12px', borderRadius: 6 }}>
             <Row justify="space-between">
               <Text style={{ fontSize: 13, color: '#666' }}>Giá trị quy đổi thành tiền mặt:</Text>
